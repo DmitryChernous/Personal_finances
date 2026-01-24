@@ -144,14 +144,15 @@ function pfInitializeReports_(ss) {
     var statusColQuery = 'Col' + (statusIdx - 1);
     
     // Use FILTER to filter by date range and type/status, then QUERY for grouping.
-    // FILTER(range, condition1, condition2, ...) filters rows where all conditions are true.
-    var monthStart = 'DATE(YEAR(TODAY());MONTH(TODAY());1)';
-    var monthEnd = 'EOMONTH(TODAY();0)';
-    
-    // Formula: QUERY(FILTER(Transactions!A2:N, Date>=monthStart, Date<=monthEnd, Type='expense', Status='ok'), "select ColX, sum(ColY) group by ColX order by sum(ColY) desc limit 10", 1)
+    // For ru_RU locale, use Russian function names: ДАТА, ГОД, МЕСЯЦ, КОНМЕСЯЦА, СЕГОДНЯ
+    // Use specific ranges (A2:A) instead of full columns for better performance.
     // Note: Category is column 7 (G) = Col6 (0-based), Amount is column 5 (E) = Col4 (0-based)
-    // Verify indices: Date=1(A), Type=2(B), Account=3(C), AccountTo=4(D), Amount=5(E), Currency=6(F), Category=7(G)
-    var topCategoriesFormula = '=QUERY(FILTER(\'' + txSheetName + '\'!A2:N;\'' + txSheetName + '\'!' + dateCol + '2:' + dateCol + '>=' + monthStart + ';\'' + txSheetName + '\'!' + dateCol + '2:' + dateCol + '<=' + monthEnd + ';\'' + txSheetName + '\'!' + typeCol + '2:' + typeCol + '="expense";\'' + txSheetName + '\'!' + statusCol + '2:' + statusCol + '="ok");"select Col6, sum(Col4) where Col6 is not null group by Col6 order by sum(Col4) desc limit 10";1)';
+    // Verify indices: Date=1(A), Type=2(B), Account=3(C), AccountTo=4(D), Amount=5(E), Currency=6(F), Category=7(G), Status=14(N)
+    // Use labels in SELECT to avoid automatic "sum" label in headers
+    var lang = pfGetLanguage_();
+    var categoryLabel = lang === 'en' ? 'Category' : 'Категория';
+    var amountLabel = lang === 'en' ? 'Amount' : 'Сумма';
+    var topCategoriesFormula = '=QUERY(FILTER(\'' + txSheetName + '\'!A2:N;\'' + txSheetName + '\'!' + dateCol + '2:' + dateCol + '>=ДАТА(ГОД(СЕГОДНЯ());МЕСЯЦ(СЕГОДНЯ());1);\'' + txSheetName + '\'!' + dateCol + '2:' + dateCol + '<=КОНМЕСЯЦА(СЕГОДНЯ();0);\'' + txSheetName + '\'!' + typeCol + '2:' + typeCol + '="expense";\'' + txSheetName + '\'!' + statusCol + '2:' + statusCol + '="ok");"select Col6 label Col6 \'' + categoryLabel + '\', sum(Col4) label sum(Col4) \'' + amountLabel + '\' where Col6 is not null group by Col6 order by sum(Col4) desc limit 10";1)';
     reportsSheet.getRange(row + 2, 1).setFormula(topCategoriesFormula);
   }
 
