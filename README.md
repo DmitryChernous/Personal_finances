@@ -54,29 +54,21 @@ npm run create:sheets
 Эта команда:
 - создаст новую таблицу в Google Drive
 - создаст контейнерный Apps Script проект
-- создаст локальный файл `.clasp.json` со `scriptId`
+- создаст локальный файл `.clasp.json` со `scriptId` и `rootDir: "src"`
 
-### 3) Указать `rootDir` в `.clasp.json`
-
-`clasp create` обычно создаёт `.clasp.json` только с `scriptId`.
-Нужно добавить `rootDir`, чтобы синхронизировать `src/`.
-
-Пример содержимого (можно взять из `.clasp.json.example`):
-
-```json
-{
-  "scriptId": "PASTE_SCRIPT_ID_HERE",
-  "rootDir": "src"
-}
-```
-
-### 4) Залить код в Apps Script
+### 3) Залить код в Apps Script
 
 ```powershell
 npm run push
 ```
 
-### 5) Открыть проект в браузере
+Если `push` пишет `Skipping push.`, сделай принудительный пуш манифеста:
+
+```powershell
+npm run push:force
+```
+
+### 4) Открыть проект в браузере
 
 ```powershell
 npm run open
@@ -89,13 +81,33 @@ npm run open
 Команда:
 
 ```powershell
-npx clasp create --parentId "<SHEET_ID>" --title "Personal finances"
+npx clasp create --parentId "<SHEET_ID>" --title "Personal finances" --rootDir src
 ```
 
-Дальше те же шаги: добавить `rootDir` и сделать `npm run push`.
+Дальше те же шаги: сделать `npm run push` (или `npm run push:force`, если нужно).
 
 ## Быстрая проверка “связь работает”
 
 После `push` открой таблицу → обнови страницу.
 В меню появится пункт **Personal finances** → **Setup (создать листы)**.
+
+## Troubleshooting
+
+### ECONNRESET / Connection was reset при `push/pull`
+
+Иногда это бывает из-за IPv6. Быстрый фикс — заставить Node предпочитать IPv4.
+
+В **PowerShell**:
+
+```powershell
+$env:NODE_OPTIONS="--dns-result-order=ipv4first"
+npm run push
+```
+
+В **cmd**:
+
+```bat
+set NODE_OPTIONS=--dns-result-order=ipv4first
+npm run push
+```
 

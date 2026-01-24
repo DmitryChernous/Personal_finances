@@ -1,8 +1,5 @@
-# Ignore everything except Apps Script project files under src/
-**/*
-!src/**
-
-# And ignore common junk inside src (just in case)
-src/**/.DS_Store
-src/**/Thumbs.db
+# .claspignore applies relative to "rootDir" from .clasp.json.
+# In this repo, "rootDir" is intended to be "src", so keep this minimal.
+.DS_Store
+Thumbs.db
 

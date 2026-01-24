@@ -8,9 +8,10 @@
     "clasp": "clasp",
     "login": "clasp login",
     "logout": "clasp logout",
-    "create:sheets": "clasp create --type sheets --title \"Personal finances\"",
-    "create:standalone": "clasp create --type standalone --title \"Personal finances\"",
+    "create:sheets": "clasp create --type sheets --title \"Personal finances\" --rootDir src",
+    "create:standalone": "clasp create --type standalone --title \"Personal finances\" --rootDir src",
     "push": "clasp push",
+    "push:force": "clasp push -f",
     "pull": "clasp pull",
     "open": "clasp open",
     "logs": "clasp logs"
