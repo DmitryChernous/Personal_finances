@@ -118,46 +118,19 @@ function pfInitializeReports_(ss) {
   // Section 2: Top expenses by category (current month).
   if (lang === 'en') {
     reportsSheet.getRange(row, 1).setValue('Top Expenses by Category (Current Month)');
-    reportsSheet.getRange(row + 1, 1).setValue('Category');
-    reportsSheet.getRange(row + 1, 2).setValue('Amount');
   } else {
     reportsSheet.getRange(row, 1).setValue('Топ расходов по категориям (текущий месяц)');
-    reportsSheet.getRange(row + 1, 1).setValue('Категория');
-    reportsSheet.getRange(row + 1, 2).setValue('Сумма');
   }
+  // Headers will be created by QUERY formula (headers=1), so we don't create them manually.
 
   // QUERY formula to get top expenses by category (current month).
-  // Note: QUERY doesn't support YEAR()/MONTH() in WHERE, so we use FILTER first.
-  // For ru_RU locale, QUERY syntax uses semicolons.
+  // Use exact working formula structure from user.
   if (categoryCol && amountCol && typeCol && statusCol && dateCol) {
-    // Get column indices (1-based) for QUERY.
-    var categoryIdx = pfColumnIndex_(PF_TRANSACTIONS_SCHEMA, 'Category');
-    var amountIdx = pfColumnIndex_(PF_TRANSACTIONS_SCHEMA, 'Amount');
-    var typeIdx = pfColumnIndex_(PF_TRANSACTIONS_SCHEMA, 'Type');
-    var statusIdx = pfColumnIndex_(PF_TRANSACTIONS_SCHEMA, 'Status');
-    var dateIdx = pfColumnIndex_(PF_TRANSACTIONS_SCHEMA, 'Date');
-    
-    // QUERY uses 0-based column indices in SELECT clause.
-    var categoryColQuery = 'Col' + (categoryIdx - 1);
-    var amountColQuery = 'Col' + (amountIdx - 1);
-    var typeColQuery = 'Col' + (typeIdx - 1);
-    var statusColQuery = 'Col' + (statusIdx - 1);
-    
-    // Use FILTER to filter by date range and type/status, then QUERY for grouping.
-    // For ru_RU locale, use Russian function names: ДАТА, ГОД, МЕСЯЦ, КОНМЕСЯЦА, СЕГОДНЯ
-    // Use specific ranges (A2:A, B2:B, N2:N) as in working formula.
-    // Column indices in QUERY (0-based): Date=A=Col0, Type=B=Col1, Amount=E=Col4, Category=G=Col6, Status=N=Col13
-    // But in working formula: Col7 for Category, Col5 for Amount - this means QUERY counts from filtered result
-    // Actually: A=Col0, B=Col1, C=Col2, D=Col3, E=Col4, F=Col5, G=Col6, H=Col7... wait, let me check
-    // Working formula uses: Col7 for Category (G column), Col5 for Amount (E column)
-    // In 0-based: G=6, E=4. But formula says Col7 and Col5. This suggests 1-based indexing or different counting.
-    // Let's use the exact working formula structure.
-    var lang = pfGetLanguage_();
     var categoryLabel = lang === 'en' ? 'Category' : 'Категория';
     var amountLabel = lang === 'en' ? 'Amount' : 'Сумма';
-    // Exact working formula structure: use Col7 for Category (G), Col5 for Amount (E)
-    var topCategoriesFormula = '=QUERY(FILTER(\'' + txSheetName + '\'!A2:N;\'' + txSheetName + '\'!A2:A>=ДАТА(ГОД(СЕГОДНЯ());МЕСЯЦ(СЕГОДНЯ());1);\'' + txSheetName + '\'!A2:A<=КОНМЕСЯЦА(СЕГОДНЯ();0);\'' + txSheetName + '\'!B2:B="expense";\'' + txSheetName + '\'!N2:N="ok");"select Col7 label Col7 \'' + categoryLabel + '\', sum(Col5) label sum(Col5) \'' + amountLabel + '\' where Col7 is not null group by Col7 order by sum(Col5) desc limit 10";1)';
-    reportsSheet.getRange(row + 2, 1).setFormula(topCategoriesFormula);
+    // Exact working formula: labels come AFTER limit, not in SELECT
+    var topCategoriesFormula = '=QUERY(FILTER(\'' + txSheetName + '\'!A2:N;\'' + txSheetName + '\'!A2:A>=ДАТА(ГОД(СЕГОДНЯ());МЕСЯЦ(СЕГОДНЯ());1);\'' + txSheetName + '\'!A2:A<=КОНМЕСЯЦА(СЕГОДНЯ();0);\'' + txSheetName + '\'!B2:B="expense";\'' + txSheetName + '\'!N2:N="ok");"select Col7, sum(Col5) where Col7 is not null group by Col7 order by sum(Col5) desc limit 10 label Col7 \'' + categoryLabel + '\', sum(Col5) \'' + amountLabel + '\'";1)';
+    reportsSheet.getRange(row + 1, 1).setFormula(topCategoriesFormula);
   }
 
   row += 12; // Leave space for up to 10 categories + header.
