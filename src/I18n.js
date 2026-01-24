@@ -33,6 +33,7 @@ var PF_I18N = {
       mark_review: 'Пометить на проверку',
       refresh_reports: 'Обновить отчёты',
       refresh_dashboard: 'Обновить дашборд',
+      generate_test_data: 'Заполнить тестовыми данными',
       language: 'Язык',
       lang_ru: 'Русский',
       lang_en: 'English'
@@ -75,6 +76,7 @@ var PF_I18N = {
       mark_review: 'Mark for review',
       refresh_reports: 'Refresh reports',
       refresh_dashboard: 'Refresh dashboard',
+      generate_test_data: 'Generate test data',
       language: 'Language',
       lang_ru: 'Русский',
       lang_en: 'English'
