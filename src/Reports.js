@@ -121,49 +121,64 @@ function pfInitializeReports_(ss) {
   } else {
     reportsSheet.getRange(row, 1).setValue('Топ расходов по категориям (текущий месяц)');
   }
-  // Headers will be created by QUERY formula (headers=1), so we don't create them manually.
 
-  // QUERY formula to get top expenses by category (current month).
-  // Use exact working formula structure from user.
+  // Top expenses by category (current month) - use script-based calculation instead of QUERY.
   if (categoryCol && amountCol && typeCol && statusCol && dateCol) {
     var categoryLabel = lang === 'en' ? 'Category' : 'Категория';
     var amountLabel = lang === 'en' ? 'Amount' : 'Сумма';
     
-    // Workaround for Google Sheets QUERY #N/A bug: add unique comment to force recalculation.
-    // Add a tiny invisible change (space in label) that changes each time to force refresh.
-    var uniqueSuffix = ' '; // Tiny change to force formula refresh
-    var topCategoriesFormula = '=QUERY(FILTER(\'' + txSheetName + '\'!A2:N;\'' + txSheetName + '\'!A2:A>=ДАТА(ГОД(СЕГОДНЯ());МЕСЯЦ(СЕГОДНЯ());1);\'' + txSheetName + '\'!A2:A<=КОНМЕСЯЦА(СЕГОДНЯ();0);\'' + txSheetName + '\'!B2:B="expense";\'' + txSheetName + '\'!N2:N="ok");"select Col7, sum(Col5) where Col7 is not null group by Col7 order by sum(Col5) desc limit 10 label Col7 \'' + categoryLabel + uniqueSuffix + '\', sum(Col5) \'' + amountLabel + '\'";1)';
+    // Set headers manually.
+    reportsSheet.getRange(row + 1, 1).setValue(categoryLabel);
+    reportsSheet.getRange(row + 1, 2).setValue(amountLabel);
     
-    var formulaRange = reportsSheet.getRange(row + 1, 1, 12, 2); // Up to 10 categories + header
-    formulaRange.clearContent();
-    formulaRange.clearFormat();
-    SpreadsheetApp.flush();
-    
-    var targetCell = reportsSheet.getRange(row + 1, 1);
-    
-    // Try multiple approaches to force formula refresh
-    // Approach 1: Set via setValue (formula as string)
-    targetCell.setValue(topCategoriesFormula);
-    SpreadsheetApp.flush();
-    Utilities.sleep(100);
-    
-    // Approach 2: Clear and set again via setFormula
-    targetCell.setValue('');
-    SpreadsheetApp.flush();
-    Utilities.sleep(50);
-    targetCell.setFormula(topCategoriesFormula);
-    SpreadsheetApp.flush();
-    Utilities.sleep(100);
-    
-    // Approach 3: Force recalculation by setting a dummy value and back
-    var currentFormula = targetCell.getFormula();
-    if (currentFormula && currentFormula.indexOf('#N/A') !== -1 || !currentFormula) {
-      // If still #N/A, try one more time with setValue
-      targetCell.setValue(''); // Clear
-      SpreadsheetApp.flush();
-      Utilities.sleep(50);
-      targetCell.setValue(topCategoriesFormula); // Set as value (formula string)
-      SpreadsheetApp.flush();
+    // Calculate data via script instead of QUERY formula to avoid #N/A bug.
+    var txSheet = pfFindSheetByKey_(ss, PF_SHEET_KEYS.TRANSACTIONS);
+    if (txSheet && txSheet.getLastRow() > 1) {
+      var today = new Date();
+      var monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+      var monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+      
+      var data = txSheet.getRange(2, 1, txSheet.getLastRow() - 1, PF_TRANSACTIONS_SCHEMA.columns.length).getValues();
+      var categoryIdx = pfColumnIndex_(PF_TRANSACTIONS_SCHEMA, 'Category') - 1;
+      var amountIdx = pfColumnIndex_(PF_TRANSACTIONS_SCHEMA, 'Amount') - 1;
+      var typeIdx = pfColumnIndex_(PF_TRANSACTIONS_SCHEMA, 'Type') - 1;
+      var statusIdx = pfColumnIndex_(PF_TRANSACTIONS_SCHEMA, 'Status') - 1;
+      var dateIdx = pfColumnIndex_(PF_TRANSACTIONS_SCHEMA, 'Date') - 1;
+      
+      var categoryTotals = {};
+      
+      for (var i = 0; i < data.length; i++) {
+        var rowData = data[i];
+        var date = rowData[dateIdx];
+        var type = rowData[typeIdx];
+        var status = rowData[statusIdx];
+        var category = rowData[categoryIdx];
+        var amount = rowData[amountIdx];
+        
+        // Filter: current month, expense, ok status, has category.
+        if (date && date >= monthStart && date <= monthEnd && 
+            type === 'expense' && status === 'ok' && category && String(category).trim() !== '') {
+          var cat = String(category).trim();
+          if (!categoryTotals[cat]) {
+            categoryTotals[cat] = 0;
+          }
+          categoryTotals[cat] += Number(amount) || 0;
+        }
+      }
+      
+      // Convert to array and sort by amount descending.
+      var result = [];
+      for (var cat in categoryTotals) {
+        result.push([cat, categoryTotals[cat]]);
+      }
+      result.sort(function(a, b) { return b[1] - a[1]; });
+      result = result.slice(0, 10); // Top 10
+      
+      // Write results.
+      if (result.length > 0) {
+        reportsSheet.getRange(row + 2, 1, result.length, 2).setValues(result);
+        reportsSheet.getRange(row + 2, 2, result.length, 1).setNumberFormat('#,##0.00');
+      }
     }
   }
 
