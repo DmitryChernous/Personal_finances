@@ -67,10 +67,20 @@ function pfApplyLocalization_(ss) {
   pfFindOrCreateSheetByKey_(ss, PF_SHEET_KEYS.TRANSACTIONS);
   pfFindOrCreateSheetByKey_(ss, PF_SHEET_KEYS.CATEGORIES);
   pfFindOrCreateSheetByKey_(ss, PF_SHEET_KEYS.ACCOUNTS);
+  pfFindOrCreateSheetByKey_(ss, PF_SHEET_KEYS.REPORTS);
+  pfFindOrCreateSheetByKey_(ss, PF_SHEET_KEYS.DASHBOARD);
+  pfFindOrCreateSheetByKey_(ss, PF_SHEET_KEYS.HELP);
 
   // Headers for Transactions (first row).
   var txSheet = pfFindOrCreateSheetByKey_(ss, PF_SHEET_KEYS.TRANSACTIONS);
   pfEnsureHeaderRow_(txSheet, PF_TRANSACTIONS_SCHEMA);
+
+  // Reference sheets headers.
+  var accountsSheet = pfFindOrCreateSheetByKey_(ss, PF_SHEET_KEYS.ACCOUNTS);
+  pfEnsureHeaderRow_(accountsSheet, PF_ACCOUNTS_SCHEMA);
+
+  var categoriesSheet = pfFindOrCreateSheetByKey_(ss, PF_SHEET_KEYS.CATEGORIES);
+  pfEnsureHeaderRow_(categoriesSheet, PF_CATEGORIES_SCHEMA);
 }
 
 /**
@@ -86,5 +96,30 @@ function pfEnsureHeaderRow_(sheet, schema) {
   }
   sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
   sheet.setFrozenRows(1);
+}
+
+/**
+ * Ensure a filter exists on header row.
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet
+ * @param {number} numColumns
+ */
+function pfEnsureFilter_(sheet, numColumns) {
+  if (sheet.getFilter()) return;
+  sheet.getRange(1, 1, 1, numColumns).createFilter();
+}
+
+/**
+ * Upsert named range.
+ * @param {GoogleAppsScript.Spreadsheet.Spreadsheet} ss
+ * @param {string} name
+ * @param {GoogleAppsScript.Spreadsheet.Range} range
+ */
+function pfUpsertNamedRange_(ss, name, range) {
+  var existing = ss.getRangeByName(name);
+  if (existing) {
+    // Remove existing named range.
+    ss.removeNamedRange(name);
+  }
+  ss.setNamedRange(name, range);
 }
 

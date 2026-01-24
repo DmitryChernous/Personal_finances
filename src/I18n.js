@@ -18,7 +18,10 @@ var PF_SHEET_KEYS = {
   SETTINGS: 'settings',
   TRANSACTIONS: 'transactions',
   CATEGORIES: 'categories',
-  ACCOUNTS: 'accounts'
+  ACCOUNTS: 'accounts',
+  REPORTS: 'reports',
+  DASHBOARD: 'dashboard',
+  HELP: 'help'
 };
 
 var PF_I18N = {
@@ -34,7 +37,10 @@ var PF_I18N = {
       settings: 'Настройки',
       transactions: 'Транзакции',
       categories: 'Категории',
-      accounts: 'Счета'
+      accounts: 'Счета',
+      reports: 'Отчеты',
+      dashboard: 'Дашборд',
+      help: 'Инструкция'
     },
     columns: {
       Date: 'Дата',
@@ -45,6 +51,10 @@ var PF_I18N = {
       Currency: 'Валюта',
       Category: 'Категория',
       Subcategory: 'Подкатегория',
+      CategoryType: 'Тип категории',
+      AccountType: 'Тип счета',
+      InitialBalance: 'Начальный баланс',
+      Active: 'Активно',
       Merchant: 'Место/контрагент',
       Description: 'Комментарий',
       Tags: 'Теги',
@@ -65,7 +75,10 @@ var PF_I18N = {
       settings: 'Settings',
       transactions: 'Transactions',
       categories: 'Categories',
-      accounts: 'Accounts'
+      accounts: 'Accounts',
+      reports: 'Reports',
+      dashboard: 'Dashboard',
+      help: 'Help'
     },
     columns: {
       Date: 'Date',
@@ -76,6 +89,10 @@ var PF_I18N = {
       Currency: 'Currency',
       Category: 'Category',
       Subcategory: 'Subcategory',
+      CategoryType: 'Category type',
+      AccountType: 'Account type',
+      InitialBalance: 'Initial balance',
+      Active: 'Active',
       Merchant: 'Merchant',
       Description: 'Description',
       Tags: 'Tags',

@@ -21,20 +21,7 @@ function onOpen() {
  * Setup: создаём листы-заготовки и применяем базовые настройки.
  */
 function pfSetup() {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-
-  // Project-wide locale conventions (separate from UI language).
-  ss.setSpreadsheetLocale('ru_RU');
-
-  // Ensure default language exists (project default is RU).
-  if (!pfGetSetting_(ss, PF_SETTINGS_KEYS.LANGUAGE)) {
-    pfSetSetting_(ss, PF_SETTINGS_KEYS.LANGUAGE, PF_DEFAULT_LANG);
-  }
-
-  // Create/rename sheets and set headers according to selected language.
-  pfApplyLocalization_(ss);
-  SpreadsheetApp.flush();
-
-  SpreadsheetApp.getUi().alert('Готово: листы созданы/обновлены, язык применён.');
+  pfRunSetup_();
+  SpreadsheetApp.getUi().alert('Готово: таблица инициализирована/обновлена.');
 }
 

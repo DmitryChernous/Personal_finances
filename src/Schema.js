@@ -11,7 +11,8 @@ var PF_SCHEMA_VERSION = 1;
  * Headers are resolved via i18n using `key` (see `src/I18n.js`).
  */
 var PF_TRANSACTIONS_SCHEMA = {
-  sheetKey: PF_SHEET_KEYS.TRANSACTIONS,
+  // IMPORTANT: keep as string literal to avoid init-order issues across script files.
+  sheetKey: 'transactions',
   columns: [
     { key: 'Date', required: true },
     { key: 'Type', required: true, allowed: ['expense', 'income', 'transfer'] },
@@ -27,6 +28,35 @@ var PF_TRANSACTIONS_SCHEMA = {
     { key: 'Source', required: true },
     { key: 'SourceId', required: false },
     { key: 'Status', required: true, allowed: ['ok', 'needs_review', 'duplicate', 'deleted'] }
+  ]
+};
+
+/**
+ * Accounts reference sheet schema.
+ */
+var PF_ACCOUNTS_SCHEMA = {
+  sheetKey: 'accounts',
+  columns: [
+    { key: 'Account', required: true },
+    { key: 'AccountType', required: false },
+    { key: 'Currency', required: false },
+    { key: 'InitialBalance', required: false },
+    { key: 'Active', required: false },
+    { key: 'Description', required: false }
+  ]
+};
+
+/**
+ * Categories reference sheet schema.
+ */
+var PF_CATEGORIES_SCHEMA = {
+  sheetKey: 'categories',
+  columns: [
+    { key: 'Category', required: true },
+    { key: 'Subcategory', required: false },
+    { key: 'CategoryType', required: false },
+    { key: 'Active', required: false },
+    { key: 'Description', required: false }
   ]
 };
 
