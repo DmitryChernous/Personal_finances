@@ -29,6 +29,8 @@ var PF_I18N = {
     menu: {
       root: 'Personal finances',
       setup: 'Setup (создать листы)',
+      validate_all: 'Проверить все транзакции',
+      mark_review: 'Пометить на проверку',
       language: 'Язык',
       lang_ru: 'Русский',
       lang_en: 'English'
@@ -67,6 +69,8 @@ var PF_I18N = {
     menu: {
       root: 'Personal finances',
       setup: 'Setup (create sheets)',
+      validate_all: 'Validate all transactions',
+      mark_review: 'Mark for review',
       language: 'Language',
       lang_ru: 'Русский',
       lang_en: 'English'
