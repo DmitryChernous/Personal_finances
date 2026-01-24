@@ -96,16 +96,16 @@ function pfInitializeDashboard_(ss) {
     var amountIdx = pfColumnIndex_(PF_TRANSACTIONS_SCHEMA, 'Amount');
     var typeIdx = pfColumnIndex_(PF_TRANSACTIONS_SCHEMA, 'Type');
     var statusIdx = pfColumnIndex_(PF_TRANSACTIONS_SCHEMA, 'Status');
-    var dateIdx = pfColumnIndex_(PF_TRANSACTIONS_SCHEMA, 'Date');
     
     var categoryColQuery = 'Col' + (categoryIdx - 1);
     var amountColQuery = 'Col' + (amountIdx - 1);
-    var typeColQuery = 'Col' + (typeIdx - 1);
-    var statusColQuery = 'Col' + (statusIdx - 1);
-    var dateColQuery = 'Col' + (dateIdx - 1);
     
-    // QUERY formula for categories data.
-    var categoriesDataFormula = '=QUERY(\'' + txSheetName + '\'!A2:N;"select ' + categoryColQuery + ', sum(' + amountColQuery + ') where ' + typeColQuery + '=\'expense\' and ' + statusColQuery + '=\'ok\' and YEAR(' + dateColQuery + ')=YEAR(TODAY()) and MONTH(' + dateColQuery + ')=MONTH(TODAY()) group by ' + categoryColQuery + ' order by sum(' + amountColQuery + ') desc limit 10";1)';
+    // Use FILTER to filter by date range and type/status, then QUERY for grouping.
+    var monthStart = 'DATE(YEAR(TODAY());MONTH(TODAY());1)';
+    var monthEnd = 'EOMONTH(TODAY();0)';
+    
+    // Formula: QUERY(FILTER(...), "select ColX, sum(ColY) group by ColX order by sum(ColY) desc limit 10", 1)
+    var categoriesDataFormula = '=QUERY(FILTER(\'' + txSheetName + '\'!A2:N;\'' + txSheetName + '\'!' + dateCol + '2:' + dateCol + '>=' + monthStart + ';\'' + txSheetName + '\'!' + dateCol + '2:' + dateCol + '<=' + monthEnd + ';\'' + txSheetName + '\'!' + typeCol + '2:' + typeCol + '="expense";\'' + txSheetName + '\'!' + statusCol + '2:' + statusCol + '="ok");"select ' + categoryColQuery + ', sum(' + amountColQuery + ') group by ' + categoryColQuery + ' order by sum(' + amountColQuery + ') desc limit 10";1)';
     dashboardSheet.getRange(row + 1, 1).setFormula(categoriesDataFormula);
 
     // Create pie chart.

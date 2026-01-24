@@ -127,7 +127,7 @@ function pfInitializeReports_(ss) {
   }
 
   // QUERY formula to get top expenses by category (current month).
-  // Note: QUERY uses 0-based column indices in the query string.
+  // Note: QUERY doesn't support YEAR()/MONTH() in WHERE, so we use FILTER first.
   // For ru_RU locale, QUERY syntax uses semicolons.
   if (categoryCol && amountCol && typeCol && statusCol && dateCol) {
     // Get column indices (1-based) for QUERY.
@@ -142,13 +142,14 @@ function pfInitializeReports_(ss) {
     var amountColQuery = 'Col' + (amountIdx - 1);
     var typeColQuery = 'Col' + (typeIdx - 1);
     var statusColQuery = 'Col' + (statusIdx - 1);
-    var dateColQuery = 'Col' + (dateIdx - 1);
     
-    // QUERY formula: select category, sum(amount) where type='expense' and status='ok' 
-    // and year(date)=year(today()) and month(date)=month(today()) 
-    // group by category order by sum(amount) desc limit 10
-    // Note: QUERY doesn't support DATE functions directly, so we filter by year and month separately.
-    var topCategoriesFormula = '=QUERY(\'' + txSheetName + '\'!A2:N;"select ' + categoryColQuery + ', sum(' + amountColQuery + ') where ' + typeColQuery + '=\'expense\' and ' + statusColQuery + '=\'ok\' and YEAR(' + dateColQuery + ')=YEAR(TODAY()) and MONTH(' + dateColQuery + ')=MONTH(TODAY()) group by ' + categoryColQuery + ' order by sum(' + amountColQuery + ') desc limit 10";1)';
+    // Use FILTER to filter by date range and type/status, then QUERY for grouping.
+    // FILTER(range, condition1, condition2, ...) filters rows where all conditions are true.
+    var monthStart = 'DATE(YEAR(TODAY());MONTH(TODAY());1)';
+    var monthEnd = 'EOMONTH(TODAY();0)';
+    
+    // Formula: QUERY(FILTER(Transactions!A2:N, Date>=monthStart, Date<=monthEnd, Type='expense', Status='ok'), "select ColX, sum(ColY) group by ColX order by sum(ColY) desc limit 10", 1)
+    var topCategoriesFormula = '=QUERY(FILTER(\'' + txSheetName + '\'!A2:N;\'' + txSheetName + '\'!' + dateCol + '2:' + dateCol + '>=' + monthStart + ';\'' + txSheetName + '\'!' + dateCol + '2:' + dateCol + '<=' + monthEnd + ';\'' + txSheetName + '\'!' + typeCol + '2:' + typeCol + '="expense";\'' + txSheetName + '\'!' + statusCol + '2:' + statusCol + '="ok");"select ' + categoryColQuery + ', sum(' + amountColQuery + ') group by ' + categoryColQuery + ' order by sum(' + amountColQuery + ') desc limit 10";1)';
     reportsSheet.getRange(row + 2, 1).setFormula(topCategoriesFormula);
   }
 
