@@ -149,7 +149,9 @@ function pfInitializeReports_(ss) {
     var monthEnd = 'EOMONTH(TODAY();0)';
     
     // Formula: QUERY(FILTER(Transactions!A2:N, Date>=monthStart, Date<=monthEnd, Type='expense', Status='ok'), "select ColX, sum(ColY) group by ColX order by sum(ColY) desc limit 10", 1)
-    var topCategoriesFormula = '=QUERY(FILTER(\'' + txSheetName + '\'!A2:N;\'' + txSheetName + '\'!' + dateCol + '2:' + dateCol + '>=' + monthStart + ';\'' + txSheetName + '\'!' + dateCol + '2:' + dateCol + '<=' + monthEnd + ';\'' + txSheetName + '\'!' + typeCol + '2:' + typeCol + '="expense";\'' + txSheetName + '\'!' + statusCol + '2:' + statusCol + '="ok");"select ' + categoryColQuery + ', sum(' + amountColQuery + ') group by ' + categoryColQuery + ' order by sum(' + amountColQuery + ') desc limit 10";1)';
+    // Note: Category is column 7 (G) = Col6 (0-based), Amount is column 5 (E) = Col4 (0-based)
+    // Verify indices: Date=1(A), Type=2(B), Account=3(C), AccountTo=4(D), Amount=5(E), Currency=6(F), Category=7(G)
+    var topCategoriesFormula = '=QUERY(FILTER(\'' + txSheetName + '\'!A2:N;\'' + txSheetName + '\'!' + dateCol + '2:' + dateCol + '>=' + monthStart + ';\'' + txSheetName + '\'!' + dateCol + '2:' + dateCol + '<=' + monthEnd + ';\'' + txSheetName + '\'!' + typeCol + '2:' + typeCol + '="expense";\'' + txSheetName + '\'!' + statusCol + '2:' + statusCol + '="ok");"select Col6, sum(Col4) where Col6 is not null group by Col6 order by sum(Col4) desc limit 10";1)';
     reportsSheet.getRange(row + 2, 1).setFormula(topCategoriesFormula);
   }
 
