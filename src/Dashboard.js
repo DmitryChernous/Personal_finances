@@ -107,7 +107,15 @@ function pfInitializeDashboard_(ss) {
     var categoryLabel = lang === 'en' ? 'Category' : 'Категория';
     var amountLabel = lang === 'en' ? 'Amount' : 'Сумма';
     var categoriesDataFormula = '=QUERY(FILTER(\'' + txSheetName + '\'!A2:N;\'' + txSheetName + '\'!A2:A>=ДАТА(ГОД(СЕГОДНЯ());МЕСЯЦ(СЕГОДНЯ());1);\'' + txSheetName + '\'!A2:A<=КОНМЕСЯЦА(СЕГОДНЯ();0);\'' + txSheetName + '\'!B2:B="expense";\'' + txSheetName + '\'!N2:N="ok");"select Col7, sum(Col5) where Col7 is not null group by Col7 order by sum(Col5) desc limit 10 label Col7 \'' + categoryLabel + '\', sum(Col5) \'' + amountLabel + '\'";1)';
+    
+    // Workaround for Google Sheets QUERY #N/A bug: clear cell first, then set formula.
+    var formulaRange = dashboardSheet.getRange(row + 1, 1, 12, 2); // Up to 10 categories + header
+    formulaRange.clearContent();
+    formulaRange.clearFormat();
+    SpreadsheetApp.flush(); // Force flush before setting formula
+    
     dashboardSheet.getRange(row + 1, 1).setFormula(categoriesDataFormula);
+    SpreadsheetApp.flush(); // Force flush after setting formula
 
     // Create pie chart.
     var dataRange = dashboardSheet.getRange(row + 1, 1, 11, 2); // Header + up to 10 categories.

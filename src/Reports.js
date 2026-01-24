@@ -130,7 +130,15 @@ function pfInitializeReports_(ss) {
     var amountLabel = lang === 'en' ? 'Amount' : 'Сумма';
     // Exact working formula: labels come AFTER limit, not in SELECT
     var topCategoriesFormula = '=QUERY(FILTER(\'' + txSheetName + '\'!A2:N;\'' + txSheetName + '\'!A2:A>=ДАТА(ГОД(СЕГОДНЯ());МЕСЯЦ(СЕГОДНЯ());1);\'' + txSheetName + '\'!A2:A<=КОНМЕСЯЦА(СЕГОДНЯ();0);\'' + txSheetName + '\'!B2:B="expense";\'' + txSheetName + '\'!N2:N="ok");"select Col7, sum(Col5) where Col7 is not null group by Col7 order by sum(Col5) desc limit 10 label Col7 \'' + categoryLabel + '\', sum(Col5) \'' + amountLabel + '\'";1)';
+    
+    // Workaround for Google Sheets QUERY #N/A bug: clear cell first, then set formula.
+    var formulaRange = reportsSheet.getRange(row + 1, 1, 12, 2); // Up to 10 categories + header
+    formulaRange.clearContent();
+    formulaRange.clearFormat();
+    SpreadsheetApp.flush(); // Force flush before setting formula
+    
     reportsSheet.getRange(row + 1, 1).setFormula(topCategoriesFormula);
+    SpreadsheetApp.flush(); // Force flush after setting formula
   }
 
   row += 12; // Leave space for up to 10 categories + header.
@@ -217,7 +225,12 @@ function pfInitializeReports_(ss) {
 function pfRefreshReports() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   pfInitializeReports_(ss);
+  
+  // Additional flush and small delay to help with QUERY formula refresh issues.
   SpreadsheetApp.flush();
+  Utilities.sleep(100); // Small delay to allow Sheets to process
+  SpreadsheetApp.flush();
+  
   var lang = pfGetLanguage_();
   if (lang === 'en') {
     SpreadsheetApp.getUi().alert('Reports updated');
