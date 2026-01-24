@@ -128,26 +128,43 @@ function pfInitializeReports_(ss) {
   if (categoryCol && amountCol && typeCol && statusCol && dateCol) {
     var categoryLabel = lang === 'en' ? 'Category' : 'Категория';
     var amountLabel = lang === 'en' ? 'Amount' : 'Сумма';
-    // Exact working formula: labels come AFTER limit, not in SELECT
-    var topCategoriesFormula = '=QUERY(FILTER(\'' + txSheetName + '\'!A2:N;\'' + txSheetName + '\'!A2:A>=ДАТА(ГОД(СЕГОДНЯ());МЕСЯЦ(СЕГОДНЯ());1);\'' + txSheetName + '\'!A2:A<=КОНМЕСЯЦА(СЕГОДНЯ();0);\'' + txSheetName + '\'!B2:B="expense";\'' + txSheetName + '\'!N2:N="ok");"select Col7, sum(Col5) where Col7 is not null group by Col7 order by sum(Col5) desc limit 10 label Col7 \'' + categoryLabel + '\', sum(Col5) \'' + amountLabel + '\'";1)';
     
-    // Workaround for Google Sheets QUERY #N/A bug: use setValue instead of setFormula, then force refresh.
+    // Workaround for Google Sheets QUERY #N/A bug: add unique comment to force recalculation.
+    // Add a tiny invisible change (space in label) that changes each time to force refresh.
+    var uniqueSuffix = ' '; // Tiny change to force formula refresh
+    var topCategoriesFormula = '=QUERY(FILTER(\'' + txSheetName + '\'!A2:N;\'' + txSheetName + '\'!A2:A>=ДАТА(ГОД(СЕГОДНЯ());МЕСЯЦ(СЕГОДНЯ());1);\'' + txSheetName + '\'!A2:A<=КОНМЕСЯЦА(СЕГОДНЯ();0);\'' + txSheetName + '\'!B2:B="expense";\'' + txSheetName + '\'!N2:N="ok");"select Col7, sum(Col5) where Col7 is not null group by Col7 order by sum(Col5) desc limit 10 label Col7 \'' + categoryLabel + uniqueSuffix + '\', sum(Col5) \'' + amountLabel + '\'";1)';
+    
     var formulaRange = reportsSheet.getRange(row + 1, 1, 12, 2); // Up to 10 categories + header
     formulaRange.clearContent();
     formulaRange.clearFormat();
     SpreadsheetApp.flush();
     
-    // Set formula using setValue (sometimes works better than setFormula for QUERY)
     var targetCell = reportsSheet.getRange(row + 1, 1);
+    
+    // Try multiple approaches to force formula refresh
+    // Approach 1: Set via setValue (formula as string)
     targetCell.setValue(topCategoriesFormula);
     SpreadsheetApp.flush();
+    Utilities.sleep(100);
     
-    // Force refresh: set empty, flush, set formula again
+    // Approach 2: Clear and set again via setFormula
     targetCell.setValue('');
     SpreadsheetApp.flush();
     Utilities.sleep(50);
     targetCell.setFormula(topCategoriesFormula);
     SpreadsheetApp.flush();
+    Utilities.sleep(100);
+    
+    // Approach 3: Force recalculation by setting a dummy value and back
+    var currentFormula = targetCell.getFormula();
+    if (currentFormula && currentFormula.indexOf('#N/A') !== -1 || !currentFormula) {
+      // If still #N/A, try one more time with setValue
+      targetCell.setValue(''); // Clear
+      SpreadsheetApp.flush();
+      Utilities.sleep(50);
+      targetCell.setValue(topCategoriesFormula); // Set as value (formula string)
+      SpreadsheetApp.flush();
+    }
   }
 
   row += 12; // Leave space for up to 10 categories + header.
