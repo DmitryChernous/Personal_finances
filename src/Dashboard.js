@@ -100,44 +100,62 @@ function pfInitializeDashboard_(ss) {
     var categoryColQuery = 'Col' + (categoryIdx - 1);
     var amountColQuery = 'Col' + (amountIdx - 1);
     
-    // Use FILTER to filter by date range and type/status, then QUERY for grouping.
-    // For ru_RU locale, use Russian function names: ДАТА, ГОД, МЕСЯЦ, КОНМЕСЯЦА, СЕГОДНЯ
-    // Use exact working formula structure: Col7 for Category (G), Col5 for Amount (E)
-    // Labels come AFTER limit, not in SELECT
+    // Top expenses by category (current month) - use script-based calculation instead of QUERY.
     var categoryLabel = lang === 'en' ? 'Category' : 'Категория';
     var amountLabel = lang === 'en' ? 'Amount' : 'Сумма';
     
-    // Workaround for Google Sheets QUERY #N/A bug: add unique comment to force recalculation.
-    var uniqueSuffix = ' '; // Tiny change to force formula refresh
-    var categoriesDataFormula = '=QUERY(FILTER(\'' + txSheetName + '\'!A2:N;\'' + txSheetName + '\'!A2:A>=ДАТА(ГОД(СЕГОДНЯ());МЕСЯЦ(СЕГОДНЯ());1);\'' + txSheetName + '\'!A2:A<=КОНМЕСЯЦА(СЕГОДНЯ();0);\'' + txSheetName + '\'!B2:B="expense";\'' + txSheetName + '\'!N2:N="ok");"select Col7, sum(Col5) where Col7 is not null group by Col7 order by sum(Col5) desc limit 10 label Col7 \'' + categoryLabel + uniqueSuffix + '\', sum(Col5) \'' + amountLabel + '\'";1)';
+    // Set headers manually.
+    dashboardSheet.getRange(row + 1, 1).setValue(categoryLabel);
+    dashboardSheet.getRange(row + 1, 2).setValue(amountLabel);
     
-    var formulaRange = dashboardSheet.getRange(row + 1, 1, 12, 2); // Up to 10 categories + header
-    formulaRange.clearContent();
-    formulaRange.clearFormat();
-    SpreadsheetApp.flush();
-    
-    var targetCell = dashboardSheet.getRange(row + 1, 1);
-    
-    // Try multiple approaches to force formula refresh
-    targetCell.setValue(categoriesDataFormula);
-    SpreadsheetApp.flush();
-    Utilities.sleep(100);
-    
-    targetCell.setValue('');
-    SpreadsheetApp.flush();
-    Utilities.sleep(50);
-    targetCell.setFormula(categoriesDataFormula);
-    SpreadsheetApp.flush();
-    Utilities.sleep(100);
-    
-    // Check if still #N/A and retry
-    var currentFormula = targetCell.getFormula();
-    if (currentFormula && currentFormula.indexOf('#N/A') !== -1 || !currentFormula) {
-      targetCell.setValue('');
-      SpreadsheetApp.flush();
-      Utilities.sleep(50);
-      targetCell.setValue(categoriesDataFormula);
-      SpreadsheetApp.flush();
+    // Calculate data via script instead of QUERY formula to avoid #N/A bug.
+    var txSheet = pfFindSheetByKey_(ss, PF_SHEET_KEYS.TRANSACTIONS);
+    if (txSheet && txSheet.getLastRow() > 1) {
+      var today = new Date();
+      var monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+      var monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+      
+      var data = txSheet.getRange(2, 1, txSheet.getLastRow() - 1, PF_TRANSACTIONS_SCHEMA.columns.length).getValues();
+      var categoryIdx = pfColumnIndex_(PF_TRANSACTIONS_SCHEMA, 'Category') - 1;
+      var amountIdx = pfColumnIndex_(PF_TRANSACTIONS_SCHEMA, 'Amount') - 1;
+      var typeIdx = pfColumnIndex_(PF_TRANSACTIONS_SCHEMA, 'Type') - 1;
+      var statusIdx = pfColumnIndex_(PF_TRANSACTIONS_SCHEMA, 'Status') - 1;
+      var dateIdx = pfColumnIndex_(PF_TRANSACTIONS_SCHEMA, 'Date') - 1;
+      
+      var categoryTotals = {};
+      
+      for (var i = 0; i < data.length; i++) {
+        var row = data[i];
+        var date = row[dateIdx];
+        var type = row[typeIdx];
+        var status = row[statusIdx];
+        var category = row[categoryIdx];
+        var amount = row[amountIdx];
+        
+        // Filter: current month, expense, ok status, has category.
+        if (date && date >= monthStart && date <= monthEnd && 
+            type === 'expense' && status === 'ok' && category && String(category).trim() !== '') {
+          var cat = String(category).trim();
+          if (!categoryTotals[cat]) {
+            categoryTotals[cat] = 0;
+          }
+          categoryTotals[cat] += Number(amount) || 0;
+        }
+      }
+      
+      // Convert to array and sort by amount descending.
+      var result = [];
+      for (var cat in categoryTotals) {
+        result.push([cat, categoryTotals[cat]]);
+      }
+      result.sort(function(a, b) { return b[1] - a[1]; });
+      result = result.slice(0, 10); // Top 10
+      
+      // Write results.
+      if (result.length > 0) {
+        dashboardSheet.getRange(row + 2, 1, result.length, 2).setValues(result);
+        dashboardSheet.getRange(row + 2, 2, result.length, 1).setNumberFormat('#,##0.00');
+      }
     }
 
     // Create pie chart.
