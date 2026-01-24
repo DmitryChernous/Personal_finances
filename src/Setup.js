@@ -49,6 +49,9 @@ function pfRunSetup_() {
   pfConfigureTransactionsSheet_(ss);
   pfEnsureHelpContent_(ss);
 
+  // Initialize Reports sheet with formulas.
+  pfInitializeReports_(ss);
+
   SpreadsheetApp.flush();
 }
 

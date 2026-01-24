@@ -31,6 +31,7 @@ var PF_I18N = {
       setup: 'Setup (создать листы)',
       validate_all: 'Проверить все транзакции',
       mark_review: 'Пометить на проверку',
+      refresh_reports: 'Обновить отчёты',
       language: 'Язык',
       lang_ru: 'Русский',
       lang_en: 'English'
@@ -71,6 +72,7 @@ var PF_I18N = {
       setup: 'Setup (create sheets)',
       validate_all: 'Validate all transactions',
       mark_review: 'Mark for review',
+      refresh_reports: 'Refresh reports',
       language: 'Language',
       lang_ru: 'Русский',
       lang_en: 'English'

@@ -9,6 +9,8 @@ function onOpen() {
   menu.addSeparator();
   menu.addItem(pfT_('menu.validate_all'), 'pfValidateAllTransactions');
   menu.addItem(pfT_('menu.mark_review'), 'pfMarkSelectedForReview');
+  menu.addSeparator();
+  menu.addItem(pfT_('menu.refresh_reports'), 'pfRefreshReports');
 
   menu
     .addSubMenu(
