@@ -52,6 +52,9 @@ function pfRunSetup_() {
   // Initialize Reports sheet with formulas.
   pfInitializeReports_(ss);
 
+  // Initialize Dashboard sheet with KPI and charts.
+  pfInitializeDashboard_(ss);
+
   SpreadsheetApp.flush();
 }
 

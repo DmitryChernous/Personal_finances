@@ -11,6 +11,7 @@ function onOpen() {
   menu.addItem(pfT_('menu.mark_review'), 'pfMarkSelectedForReview');
   menu.addSeparator();
   menu.addItem(pfT_('menu.refresh_reports'), 'pfRefreshReports');
+  menu.addItem(pfT_('menu.refresh_dashboard'), 'pfRefreshDashboard');
 
   menu
     .addSubMenu(

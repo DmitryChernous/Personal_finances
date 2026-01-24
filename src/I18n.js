@@ -32,6 +32,7 @@ var PF_I18N = {
       validate_all: 'Проверить все транзакции',
       mark_review: 'Пометить на проверку',
       refresh_reports: 'Обновить отчёты',
+      refresh_dashboard: 'Обновить дашборд',
       language: 'Язык',
       lang_ru: 'Русский',
       lang_en: 'English'
@@ -73,6 +74,7 @@ var PF_I18N = {
       validate_all: 'Validate all transactions',
       mark_review: 'Mark for review',
       refresh_reports: 'Refresh reports',
+      refresh_dashboard: 'Refresh dashboard',
       language: 'Language',
       lang_ru: 'Русский',
       lang_en: 'English'
