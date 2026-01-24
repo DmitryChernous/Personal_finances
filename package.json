@@ -13,7 +13,7 @@
     "push": "clasp push",
     "push:force": "clasp push -f",
     "pull": "clasp pull",
-    "open": "clasp open",
+    "open": "clasp open-container",
     "logs": "clasp logs"
   },
   "repository": {
