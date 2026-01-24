@@ -1,0 +1,33 @@
+{
+  "name": "personal_finances",
+  "version": "1.0.0",
+  "description": "Инструмент учета личных финансов на базе Google Sheets + Apps Script.",
+  "private": true,
+  "main": "index.js",
+  "scripts": {
+    "clasp": "clasp",
+    "login": "clasp login",
+    "logout": "clasp logout",
+    "create:sheets": "clasp create --type sheets --title \"Personal finances\"",
+    "create:standalone": "clasp create --type standalone --title \"Personal finances\"",
+    "push": "clasp push",
+    "pull": "clasp pull",
+    "open": "clasp open",
+    "logs": "clasp logs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/DmitryChernous/Personal_finances.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/DmitryChernous/Personal_finances/issues"
+  },
+  "homepage": "https://github.com/DmitryChernous/Personal_finances#readme",
+  "devDependencies": {
+    "@google/clasp": "^3.1.3"
+  }
+}
