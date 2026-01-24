@@ -102,11 +102,11 @@ function pfInitializeDashboard_(ss) {
     
     // Use FILTER to filter by date range and type/status, then QUERY for grouping.
     // For ru_RU locale, use Russian function names: ДАТА, ГОД, МЕСЯЦ, КОНМЕСЯЦА, СЕГОДНЯ
-    // Note: Category is column 7 (G) = Col6 (0-based), Amount is column 5 (E) = Col4 (0-based)
+    // Use exact working formula structure: Col7 for Category (G), Col5 for Amount (E)
     // Use labels in SELECT to avoid automatic "sum" label in headers
     var categoryLabel = lang === 'en' ? 'Category' : 'Категория';
     var amountLabel = lang === 'en' ? 'Amount' : 'Сумма';
-    var categoriesDataFormula = '=QUERY(FILTER(\'' + txSheetName + '\'!A2:N;\'' + txSheetName + '\'!' + dateCol + '2:' + dateCol + '>=ДАТА(ГОД(СЕГОДНЯ());МЕСЯЦ(СЕГОДНЯ());1);\'' + txSheetName + '\'!' + dateCol + '2:' + dateCol + '<=КОНМЕСЯЦА(СЕГОДНЯ();0);\'' + txSheetName + '\'!' + typeCol + '2:' + typeCol + '="expense";\'' + txSheetName + '\'!' + statusCol + '2:' + statusCol + '="ok");"select Col6 label Col6 \'' + categoryLabel + '\', sum(Col4) label sum(Col4) \'' + amountLabel + '\' where Col6 is not null group by Col6 order by sum(Col4) desc limit 10";1)';
+    var categoriesDataFormula = '=QUERY(FILTER(\'' + txSheetName + '\'!A2:N;\'' + txSheetName + '\'!A2:A>=ДАТА(ГОД(СЕГОДНЯ());МЕСЯЦ(СЕГОДНЯ());1);\'' + txSheetName + '\'!A2:A<=КОНМЕСЯЦА(СЕГОДНЯ();0);\'' + txSheetName + '\'!B2:B="expense";\'' + txSheetName + '\'!N2:N="ok");"select Col7 label Col7 \'' + categoryLabel + '\', sum(Col5) label sum(Col5) \'' + amountLabel + '\' where Col7 is not null group by Col7 order by sum(Col5) desc limit 10";1)';
     dashboardSheet.getRange(row + 1, 1).setFormula(categoriesDataFormula);
 
     // Create pie chart.
