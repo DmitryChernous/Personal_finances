@@ -393,6 +393,24 @@
       // Store total count in options for server-side function
       options._totalCount = totalCount;
       
+      // Load existing keys ONCE before processing batches (to avoid calling slow function on each batch)
+      updateProgress('Загрузка существующих транзакций для проверки дубликатов...', 16);
+      google.script.run
+        .withSuccessHandler(function(keys) {
+          existingKeys = keys || {};
+          // Start processing batches
+          processNextBatch();
+        })
+        .withFailureHandler(function(error) {
+          // If loading keys fails, start with empty keys (will still work, just won't detect duplicates with existing)
+          console.warn('Failed to load existing keys:', error);
+          existingKeys = {};
+          processNextBatch();
+        })
+        .pfGetExistingTransactionKeys();
+      
+      return; // Don't call processNextBatch() here - it will be called after keys are loaded
+      
       function processNextBatch() {
         // Clear any existing timeout
         if (timeoutId) {
@@ -406,8 +424,8 @@
           return;
         }
         
-        // Calculate progress (15% to 85%)
-        var progress = 15 + Math.floor((processed / totalCount) * 70);
+        // Calculate progress (17% to 85%) - adjusted because keys loading takes 1-2%
+        var progress = 17 + Math.floor((processed / totalCount) * 68);
         var remaining = totalCount - processed;
         updateProgress('Обработка транзакций: ' + processed + ' из ' + totalCount + ' (' + remaining + ' осталось)...', progress);
         
@@ -419,9 +437,8 @@
         // Also pass current processed count and existing keys so server knows the offset
         var batchOptions = Object.assign({}, options);
         batchOptions._startIndex = processed;
-        if (existingKeys) {
-          batchOptions._existingKeys = existingKeys;
-        }
+        // Always pass existingKeys (loaded once at the beginning)
+        batchOptions._existingKeys = existingKeys || {};
         
         // Set timeout (5 minutes)
         timeoutId = setTimeout(function() {
@@ -500,8 +517,8 @@
           .pfWritePreview(JSON.stringify(allTransactions));
       }
       
-      // Start processing
-      processNextBatch();
+      // Note: processNextBatch() will be called after keys are loaded
+      // (see the google.script.run.pfGetExistingTransactionKeys_() call above)
     }
   </script>
 </body>

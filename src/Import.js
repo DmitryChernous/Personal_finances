@@ -250,6 +250,7 @@ function pfProcessImportData_(rawData, importer, options) {
 
 /**
  * Get existing transaction deduplication keys.
+ * Private function - loads all keys from Transactions sheet.
  * @returns {Object} Map of dedupeKey -> true
  */
 function pfGetExistingTransactionKeys_() {
@@ -583,14 +584,14 @@ function pfProcessDataBatch(rawDataJson, importerType, options, batchSize, start
     errors: 0
   };
   
-  // Get existing keys - use from options if provided (passed from client), otherwise load once
+  // Get existing keys from options (always passed from client after first load)
+  // If not provided, start with empty object (no existing transactions to check)
   var existingKeys = null;
   if (options._existingKeys && typeof options._existingKeys === 'object') {
-    // Use keys passed from client (updated after each batch)
     existingKeys = options._existingKeys;
   } else {
-    // Load keys only on first batch
-    existingKeys = pfGetExistingTransactionKeys_();
+    // No keys provided - start with empty (will accumulate during processing)
+    existingKeys = {};
   }
   
   // Process all items in the batch (rawData is already the batch)
@@ -741,6 +742,15 @@ function pfProcessFileImport_(fileContent, options) {
     }
     throw error;
   }
+}
+
+/**
+ * Get existing transaction deduplication keys.
+ * Public function for HTML Service (called once before batch processing).
+ * @returns {Object} Map of dedupeKey -> true
+ */
+function pfGetExistingTransactionKeys() {
+  return pfGetExistingTransactionKeys_();
 }
 
 /**
