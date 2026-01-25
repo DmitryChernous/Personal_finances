@@ -486,14 +486,36 @@
           .withSuccessHandler(function(batchResult) {
             var callDuration = Date.now() - callStartTime;
             console.log('[CLIENT] pfProcessDataBatch SUCCESS after', callDuration, 'ms');
-            console.log('[CLIENT] Batch result:', {
-              transactionsCount: batchResult.transactions ? batchResult.transactions.length : 0,
+            console.log('[CLIENT] Batch result received:', batchResult);
+            console.log('[CLIENT] Batch result type:', typeof batchResult);
+            console.log('[CLIENT] Batch result is null?', batchResult === null);
+            console.log('[CLIENT] Batch result is undefined?', batchResult === undefined);
+            
+            // Check if result is null or invalid
+            if (!batchResult || typeof batchResult !== 'object') {
+              console.error('[CLIENT] ERROR: batchResult is null or invalid!', batchResult);
+              hideProgress();
+              showError('Ошибка: сервер вернул неверный результат. Попробуйте уменьшить размер батча или разбить файл на части.');
+              document.getElementById('previewBtn').disabled = false;
+              return;
+            }
+            
+            console.log('[CLIENT] Batch result details:', {
+              transactionsCount: batchResult.transactions ? batchResult.transactions.length : 'MISSING',
               stats: batchResult.stats,
               processed: batchResult.processed,
               total: batchResult.total,
               hasMore: batchResult.hasMore,
               existingKeysCount: batchResult.existingKeys ? Object.keys(batchResult.existingKeys).length : 0
             });
+            
+            if (!batchResult.transactions || !Array.isArray(batchResult.transactions)) {
+              console.error('[CLIENT] ERROR: batchResult.transactions is missing or not an array!', batchResult.transactions);
+              hideProgress();
+              showError('Ошибка: сервер вернул результат без транзакций. Попробуйте уменьшить размер батча.');
+              document.getElementById('previewBtn').disabled = false;
+              return;
+            }
             
             if (timeoutId) {
               clearTimeout(timeoutId);

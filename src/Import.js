@@ -648,12 +648,19 @@ function pfProcessDataBatch(rawDataJson, importerType, options, batchSize, start
           stats.valid++;
         }
         
+        // Convert Date objects to ISO strings for JSON serialization
+        // This prevents issues when passing through google.script.run
+        if (transaction.date instanceof Date) {
+          transaction.date = transaction.date.toISOString();
+        }
+        
         transactions.push(transaction);
       } catch (e) {
         Logger.log('[SERVER] ERROR processing item ' + i + ': ' + e.toString());
+        Logger.log('[SERVER] Error stack: ' + (e.stack || 'No stack'));
         stats.errors++;
         transactions.push({
-          date: new Date(),
+          date: new Date().toISOString(), // Use ISO string instead of Date object
           type: 'expense',
           account: '',
           amount: 0,
@@ -675,8 +682,16 @@ function pfProcessDataBatch(rawDataJson, importerType, options, batchSize, start
     var totalCount = options._totalCount || rawData.length;
     
     Logger.log('[SERVER] Calculated: processed=' + processed + ', totalCount=' + totalCount + ', hasMore=' + (processed < totalCount));
-    Logger.log('[SERVER] Returning result...');
+    Logger.log('[SERVER] Preparing result object...');
+    Logger.log('[SERVER] Result size check: transactions=' + transactions.length + ', existingKeys=' + Object.keys(existingKeys).length);
     
+    // Check if result might be too large for google.script.run
+    // Try to estimate size (rough approximation)
+    var estimatedSize = JSON.stringify(transactions).length;
+    Logger.log('[SERVER] Estimated transactions JSON size: ' + estimatedSize + ' bytes');
+    
+    // If result is too large, we might need to split it
+    // But first, let's try to return it and see if it works
     var result = {
       transactions: transactions,
       stats: stats,
@@ -686,7 +701,18 @@ function pfProcessDataBatch(rawDataJson, importerType, options, batchSize, start
       existingKeys: existingKeys // Return updated keys for next batch
     };
     
+    // Try to serialize to check if there are any issues
+    try {
+      var testSerialization = JSON.stringify(result);
+      Logger.log('[SERVER] Result serialization test: SUCCESS, size: ' + testSerialization.length + ' bytes');
+    } catch (e) {
+      Logger.log('[SERVER] ERROR: Result serialization failed: ' + e.toString());
+      throw new Error('Failed to serialize result: ' + e.toString());
+    }
+    
+    Logger.log('[SERVER] Returning result...');
     Logger.log('[SERVER] pfProcessDataBatch completed successfully');
+    
     return result;
     
   } catch (e) {
