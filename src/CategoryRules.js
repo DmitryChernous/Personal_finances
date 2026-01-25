@@ -150,16 +150,27 @@ function pfGetAllCategoryRules_(ss) {
     // Get applyTo (convert from localized string to key)
     var applyToLocalized = String(row[applyToCol - 1] || '').trim();
     var applyTo = PF_RULE_APPLY_TO.BOTH; // Default
-    if (applyToLocalized === pfT_('rule_apply_to.merchant')) {
+    
+    // Try exact match first
+    if (applyToLocalized === pfT_('rule_apply_to.merchant') || 
+        applyToLocalized.toLowerCase() === 'только место/контрагент' ||
+        applyToLocalized.toLowerCase() === 'merchant only') {
       applyTo = PF_RULE_APPLY_TO.MERCHANT;
-    } else if (applyToLocalized === pfT_('rule_apply_to.description')) {
+    } else if (applyToLocalized === pfT_('rule_apply_to.description') || 
+               applyToLocalized.toLowerCase() === 'только комментарий' ||
+               applyToLocalized.toLowerCase() === 'description only') {
       applyTo = PF_RULE_APPLY_TO.DESCRIPTION;
-    } else if (applyToLocalized === pfT_('rule_apply_to.both')) {
+    } else if (applyToLocalized === pfT_('rule_apply_to.both') || 
+               applyToLocalized.toLowerCase() === 'оба поля' ||
+               applyToLocalized.toLowerCase() === 'both fields') {
       applyTo = PF_RULE_APPLY_TO.BOTH;
     } else if (applyToLocalized === PF_RULE_APPLY_TO.MERCHANT || 
                applyToLocalized === PF_RULE_APPLY_TO.DESCRIPTION || 
                applyToLocalized === PF_RULE_APPLY_TO.BOTH) {
       applyTo = applyToLocalized; // Already a key
+    } else if (applyToLocalized !== '') {
+      // Log unrecognized value for debugging
+      pfLogWarning_('Unrecognized ApplyTo value: "' + applyToLocalized + '", using default (both)', 'pfGetAllCategoryRules_');
     }
     
     var rule = {
@@ -175,9 +186,11 @@ function pfGetAllCategoryRules_(ss) {
     
     // Skip rules with empty required fields
     if (!rule.ruleName || !rule.pattern || !rule.patternType || !rule.category) {
+      pfLogDebug_('Skipping rule with empty required fields: ruleName=' + rule.ruleName + ', pattern=' + rule.pattern + ', patternType=' + rule.patternType + ', category=' + rule.category, 'pfGetAllCategoryRules_');
       continue;
     }
     
+    pfLogDebug_('Loaded rule: ' + rule.ruleName + ', pattern="' + rule.pattern + '", type=' + rule.patternType + ', applyTo=' + rule.applyTo + ', category=' + rule.category, 'pfGetAllCategoryRules_');
     rules.push(rule);
   }
   
@@ -220,9 +233,11 @@ function pfMatchCategoryRule_(merchant, description, rules) {
     // Try to match pattern
     var matched = false;
     
+    // First, try the specified field(s)
     if (checkMerchant && merchant) {
       matched = pfMatchPattern_(merchant, rule.pattern, rule.patternType);
       if (matched) {
+        pfLogDebug_('Rule "' + rule.ruleName + '" matched on merchant: "' + merchant + '" with pattern "' + rule.pattern + '"', 'pfMatchCategoryRule_');
         return rule;
       }
     }
@@ -230,6 +245,26 @@ function pfMatchCategoryRule_(merchant, description, rules) {
     if (checkDescription && description) {
       matched = pfMatchPattern_(description, rule.pattern, rule.patternType);
       if (matched) {
+        pfLogDebug_('Rule "' + rule.ruleName + '" matched on description: "' + description + '" with pattern "' + rule.pattern + '"', 'pfMatchCategoryRule_');
+        return rule;
+      }
+    }
+    
+    // Fallback: if rule is set to check only one field but didn't match,
+    // try the other field as well (more flexible matching)
+    // This helps when merchant name appears in description or vice versa
+    if (rule.applyTo === PF_RULE_APPLY_TO.MERCHANT && description) {
+      matched = pfMatchPattern_(description, rule.pattern, rule.patternType);
+      if (matched) {
+        pfLogDebug_('Rule "' + rule.ruleName + '" matched on description (fallback) with pattern "' + rule.pattern + '"', 'pfMatchCategoryRule_');
+        return rule;
+      }
+    }
+    
+    if (rule.applyTo === PF_RULE_APPLY_TO.DESCRIPTION && merchant) {
+      matched = pfMatchPattern_(merchant, rule.pattern, rule.patternType);
+      if (matched) {
+        pfLogDebug_('Rule "' + rule.ruleName + '" matched on merchant (fallback) with pattern "' + rule.pattern + '"', 'pfMatchCategoryRule_');
         return rule;
       }
     }
