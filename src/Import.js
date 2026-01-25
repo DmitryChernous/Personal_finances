@@ -621,71 +621,163 @@ function pfFindDuplicateTransaction(dedupeKey) {
  * @returns {Object} Commit result
  */
 function pfCommitImport_(includeNeedsReview) {
+  Logger.log('[SERVER] pfCommitImport_ called, includeNeedsReview: ' + includeNeedsReview);
+  
   includeNeedsReview = includeNeedsReview || false;
   
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var stagingSheet = pfFindSheetByKey_(ss, PF_SHEET_KEYS.IMPORT_RAW);
-  if (!stagingSheet || stagingSheet.getLastRow() <= 1) {
-    return { success: false, message: 'Нет данных для импорта' };
-  }
-  
-  var txSheet = pfFindOrCreateSheetByKey_(ss, PF_SHEET_KEYS.TRANSACTIONS);
-  var numDataCols = PF_TRANSACTIONS_SCHEMA.columns.length;
-  var data = stagingSheet.getRange(2, 1, stagingSheet.getLastRow() - 1, numDataCols).getValues();
-  var statusColIdx = pfColumnIndex_(PF_TRANSACTIONS_SCHEMA, 'Status');
-  var errorCol = numDataCols + 1; // Error column is after transaction columns
-  
-  var rowsToAdd = [];
-  var stats = {
-    added: 0,
-    skipped: 0,
-    needsReview: 0
-  };
-  
-  for (var i = 0; i < data.length; i++) {
-    var row = data[i];
-    var statusValue = statusColIdx ? row[statusColIdx - 1] : 'ok';
-    var hasErrors = stagingSheet.getRange(i + 2, errorCol).getValue() !== '';
-    
-    // Skip duplicates
-    if (statusValue === 'duplicate') {
-      stats.skipped++;
-      continue;
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var stagingSheet = pfFindSheetByKey_(ss, PF_SHEET_KEYS.IMPORT_RAW);
+    if (!stagingSheet || stagingSheet.getLastRow() <= 1) {
+      Logger.log('[SERVER] No staging data found');
+      return { success: false, message: 'Нет данных для импорта' };
     }
     
-    // Skip needs_review if not including
-    if (statusValue === 'needs_review' && !includeNeedsReview) {
-      stats.needsReview++;
-      continue;
+    Logger.log('[SERVER] Staging sheet found, lastRow: ' + stagingSheet.getLastRow());
+    
+    var txSheet = pfFindOrCreateSheetByKey_(ss, PF_SHEET_KEYS.TRANSACTIONS);
+    var numDataCols = PF_TRANSACTIONS_SCHEMA.columns.length;
+    var lastStagingRow = stagingSheet.getLastRow();
+    var data = stagingSheet.getRange(2, 1, lastStagingRow - 1, numDataCols).getValues();
+    
+    Logger.log('[SERVER] Read ' + data.length + ' rows from staging sheet');
+    
+    var statusColIdx = pfColumnIndex_(PF_TRANSACTIONS_SCHEMA, 'Status');
+    var dateColIdx = pfColumnIndex_(PF_TRANSACTIONS_SCHEMA, 'Date');
+    var errorCol = numDataCols + 1; // Error column is after transaction columns
+    
+    Logger.log('[SERVER] Status column index: ' + statusColIdx + ', Date column index: ' + dateColIdx + ', Error column: ' + errorCol);
+    
+    var rowsToAdd = [];
+    var stats = {
+      added: 0,
+      skipped: 0,
+      needsReview: 0
+    };
+    
+    for (var i = 0; i < data.length; i++) {
+      var row = data[i];
+      
+      // Check status - normalize to string
+      var statusValue = statusColIdx ? String(row[statusColIdx - 1] || '').trim() : 'ok';
+      var hasErrors = false;
+      
+      try {
+        var errorCellValue = stagingSheet.getRange(i + 2, errorCol).getValue();
+        hasErrors = errorCellValue && String(errorCellValue).trim() !== '';
+      } catch (e) {
+        Logger.log('[SERVER] WARNING: Could not read error cell for row ' + (i + 2) + ': ' + e.toString());
+      }
+      
+      if (i < 3) {
+        Logger.log('[SERVER] Row ' + (i + 2) + ': status=' + statusValue + ', hasErrors=' + hasErrors + ', date=' + (row[dateColIdx - 1] || ''));
+      }
+      
+      // Skip duplicates
+      if (statusValue === 'duplicate') {
+        stats.skipped++;
+        continue;
+      }
+      
+      // Skip needs_review if not including
+      if (statusValue === 'needs_review' && !includeNeedsReview) {
+        stats.needsReview++;
+        continue;
+      }
+      
+      // Convert Date strings back to Date objects if needed
+      var processedRow = [];
+      for (var j = 0; j < row.length; j++) {
+        var value = row[j];
+        
+        // If this is the Date column and value is a string (ISO format), convert to Date
+        if (dateColIdx && j === dateColIdx - 1 && typeof value === 'string' && value.length > 0) {
+          try {
+            var dateObj = new Date(value);
+            if (!isNaN(dateObj.getTime())) {
+              processedRow.push(dateObj);
+            } else {
+              Logger.log('[SERVER] WARNING: Invalid date string in row ' + (i + 2) + ': ' + value);
+              processedRow.push(value); // Keep as string if can't parse
+            }
+          } catch (e) {
+            Logger.log('[SERVER] WARNING: Error parsing date in row ' + (i + 2) + ': ' + e.toString());
+            processedRow.push(value);
+          }
+        } else {
+          processedRow.push(value);
+        }
+      }
+      
+      // Add transaction
+      rowsToAdd.push(processedRow);
+      stats.added++;
     }
     
-    // Add transaction
-    rowsToAdd.push(row);
-    stats.added++;
-  }
-  
-  if (rowsToAdd.length > 0) {
-    var lastRow = txSheet.getLastRow();
-    txSheet.getRange(lastRow + 1, 1, rowsToAdd.length, rowsToAdd[0].length).setValues(rowsToAdd);
+    Logger.log('[SERVER] Prepared ' + rowsToAdd.length + ' rows to add. Stats: ' + JSON.stringify(stats));
     
-    // Normalize and validate added rows
-    for (var i = 0; i < rowsToAdd.length; i++) {
-      pfNormalizeTransactionRow_(txSheet, lastRow + 1 + i);
-      var errors = pfValidateTransactionRow_(txSheet, lastRow + 1 + i);
-      pfHighlightErrors_(txSheet, lastRow + 1 + i, errors);
+    if (rowsToAdd.length > 0) {
+      var lastRow = txSheet.getLastRow();
+      Logger.log('[SERVER] Writing ' + rowsToAdd.length + ' rows to Transactions sheet starting at row ' + (lastRow + 1));
+      
+      try {
+        txSheet.getRange(lastRow + 1, 1, rowsToAdd.length, rowsToAdd[0].length).setValues(rowsToAdd);
+        Logger.log('[SERVER] Successfully wrote rows to Transactions sheet');
+        
+        // Normalize and validate added rows
+        for (var i = 0; i < rowsToAdd.length; i++) {
+          try {
+            pfNormalizeTransactionRow_(txSheet, lastRow + 1 + i);
+            var errors = pfValidateTransactionRow_(txSheet, lastRow + 1 + i);
+            pfHighlightErrors_(txSheet, lastRow + 1 + i, errors);
+          } catch (e) {
+            Logger.log('[SERVER] WARNING: Error normalizing/validating row ' + (lastRow + 1 + i) + ': ' + e.toString());
+          }
+        }
+      } catch (e) {
+        Logger.log('[SERVER] ERROR writing to Transactions sheet: ' + e.toString());
+        Logger.log('[SERVER] Error stack: ' + (e.stack || 'No stack'));
+        throw new Error('Ошибка при записи транзакций: ' + e.toString());
+      }
+    } else {
+      Logger.log('[SERVER] No rows to add');
     }
+    
+    // Clear staging sheet safely
+    var stagingLastRow = stagingSheet.getLastRow();
+    if (stagingLastRow > 1) {
+      var rowsToDelete = stagingLastRow - 1;
+      if (rowsToDelete > 0) {
+        try {
+          Logger.log('[SERVER] Clearing staging sheet: deleting ' + rowsToDelete + ' rows');
+          stagingSheet.deleteRows(2, rowsToDelete);
+        } catch (e) {
+          Logger.log('[SERVER] WARNING: Could not delete staging rows: ' + e.toString());
+          // Try alternative: clear content
+          try {
+            stagingSheet.getRange(2, 1, rowsToDelete, stagingSheet.getLastColumn()).clearContent();
+          } catch (e2) {
+            Logger.log('[SERVER] WARNING: Could not clear staging content: ' + e2.toString());
+          }
+        }
+      }
+    }
+    
+    Logger.log('[SERVER] pfCommitImport_ completed successfully');
+    return {
+      success: true,
+      stats: stats,
+      message: 'Импортировано: ' + stats.added + ' транзакций. Пропущено: ' + stats.skipped + '. На проверку: ' + stats.needsReview
+    };
+    
+  } catch (e) {
+    Logger.log('[SERVER] FATAL ERROR in pfCommitImport_: ' + e.toString());
+    Logger.log('[SERVER] Error stack: ' + (e.stack || 'No stack'));
+    return {
+      success: false,
+      message: 'Ошибка при импорте: ' + (e.message || e.toString())
+    };
   }
-  
-  // Clear staging sheet
-  if (stagingSheet.getLastRow() > 1) {
-    stagingSheet.deleteRows(2, stagingSheet.getLastRow() - 1);
-  }
-  
-  return {
-    success: true,
-    stats: stats,
-    message: 'Импортировано: ' + stats.added + ' транзакций. Пропущено: ' + stats.skipped + '. На проверку: ' + stats.needsReview
-  };
 }
 
 /**
