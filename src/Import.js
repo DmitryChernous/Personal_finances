@@ -456,10 +456,15 @@ function pfProcessFileImport_(fileContent, options) {
   options = options || {};
   
   // Detect and use appropriate importer
-  var importer = PF_CSV_IMPORTER;
+  // Try Sberbank first (more specific), then generic CSV
+  var importer = null;
   
-  if (!importer.detect(fileContent)) {
-    throw new Error('Формат файла не поддерживается. Используйте CSV файл.');
+  if (typeof PF_SBERBANK_IMPORTER !== 'undefined' && PF_SBERBANK_IMPORTER.detect(fileContent)) {
+    importer = PF_SBERBANK_IMPORTER;
+  } else if (PF_CSV_IMPORTER.detect(fileContent)) {
+    importer = PF_CSV_IMPORTER;
+  } else {
+    throw new Error('Формат файла не поддерживается. Используйте CSV файл или выписку Сбербанка.');
   }
   
   // Parse
