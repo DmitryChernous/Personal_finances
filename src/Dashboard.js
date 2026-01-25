@@ -461,6 +461,200 @@ function pfInitializeDashboard_(ss) {
 
   row += 20; // Leave space for chart and data.
 
+  // Section 4: Month Comparison (Bar Chart) - Current vs Previous Month
+  if (lang === 'en') {
+    dashboardSheet.getRange(row, 1).setValue('Month Comparison (Current vs Previous)');
+  } else {
+    dashboardSheet.getRange(row, 1).setValue('Сравнение месяцев (текущий vs предыдущий)');
+  }
+
+  // Calculate current and previous month data
+  var txSheet = pfFindSheetByKey_(ss, PF_SHEET_KEYS.TRANSACTIONS);
+  if (txSheet && txSheet.getLastRow() > 1) {
+    var today = new Date();
+    var currentMonthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+    var currentMonthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+    
+    var prevMonthStart = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+    var prevMonthEnd = new Date(today.getFullYear(), today.getMonth(), 0);
+    
+    // Get column indices
+    var dateColIdx = pfColumnIndex_(PF_TRANSACTIONS_SCHEMA, 'Date');
+    var amountColIdx = pfColumnIndex_(PF_TRANSACTIONS_SCHEMA, 'Amount');
+    var typeColIdx = pfColumnIndex_(PF_TRANSACTIONS_SCHEMA, 'Type');
+    var statusColIdx = pfColumnIndex_(PF_TRANSACTIONS_SCHEMA, 'Status');
+    
+    if (dateColIdx && amountColIdx && typeColIdx && statusColIdx) {
+      var lastRow = txSheet.getLastRow();
+      var data = txSheet.getRange(2, 1, lastRow - 1, PF_TRANSACTIONS_SCHEMA.columns.length).getValues();
+      
+      var currentIncome = 0;
+      var currentExpense = 0;
+      var prevIncome = 0;
+      var prevExpense = 0;
+      
+      for (var i = 0; i < data.length; i++) {
+        var rowData = data[i];
+        if (rowData.length <= dateColIdx || rowData.length <= amountColIdx || 
+            rowData.length <= typeColIdx || rowData.length <= statusColIdx) {
+          continue;
+        }
+        
+        var date = rowData[dateColIdx - 1];
+        var amount = Number(rowData[amountColIdx - 1]) || 0;
+        var type = rowData[typeColIdx - 1];
+        var status = rowData[statusColIdx - 1];
+        
+        if (!(date instanceof Date) || status !== PF_TRANSACTION_STATUS.OK) {
+          continue;
+        }
+        
+        // Check if in current month
+        if (date >= currentMonthStart && date <= currentMonthEnd) {
+          if (type === PF_TRANSACTION_TYPE.INCOME) {
+            currentIncome += amount;
+          } else if (type === PF_TRANSACTION_TYPE.EXPENSE) {
+            currentExpense += amount;
+          }
+        }
+        
+        // Check if in previous month
+        if (date >= prevMonthStart && date <= prevMonthEnd) {
+          if (type === PF_TRANSACTION_TYPE.INCOME) {
+            prevIncome += amount;
+          } else if (type === PF_TRANSACTION_TYPE.EXPENSE) {
+            prevExpense += amount;
+          }
+        }
+      }
+      
+      // Prepare data for chart
+      var comparisonData = [];
+      if (lang === 'en') {
+        comparisonData.push(['Month', 'Income', 'Expenses']);
+        comparisonData.push(['Current Month', currentIncome, currentExpense]);
+        comparisonData.push(['Previous Month', prevIncome, prevExpense]);
+      } else {
+        comparisonData.push(['Месяц', 'Доходы', 'Расходы']);
+        comparisonData.push(['Текущий месяц', currentIncome, currentExpense]);
+        comparisonData.push(['Предыдущий месяц', prevIncome, prevExpense]);
+      }
+      
+      // Write data
+      dashboardSheet.getRange(row + 1, 1, comparisonData.length, 3).setValues(comparisonData);
+      dashboardSheet.getRange(row + 2, 2, 2, 2).setNumberFormat('#,##0.00');
+      
+      // Create bar chart
+      var dataRange = dashboardSheet.getRange(row + 1, 1, comparisonData.length, 3);
+      var chart = dashboardSheet.newChart()
+        .setChartType(Charts.ChartType.COLUMN)
+        .addRange(dataRange)
+        .setPosition(row + 1 + comparisonData.length, 1, 0, 0)
+        .setOption('title', lang === 'en' ? 'Month Comparison' : 'Сравнение месяцев')
+        .setOption('legend.position', 'bottom')
+        .setOption('width', 500)
+        .setOption('height', 300)
+        .build();
+      dashboardSheet.insertChart(chart);
+    }
+  }
+
+  row += 10; // Leave space for chart and data.
+
+  // Section 5: Day of Week Analysis (Bar Chart) - Average expenses by day of week
+  if (lang === 'en') {
+    dashboardSheet.getRange(row, 1).setValue('Average Expenses by Day of Week (Current Month)');
+  } else {
+    dashboardSheet.getRange(row, 1).setValue('Средние расходы по дням недели (текущий месяц)');
+  }
+
+  // Calculate average expenses by day of week for current month
+  if (txSheet && txSheet.getLastRow() > 1) {
+    var today = new Date();
+    var monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+    var monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+    
+    // Get column indices
+    var dateColIdx = pfColumnIndex_(PF_TRANSACTIONS_SCHEMA, 'Date');
+    var amountColIdx = pfColumnIndex_(PF_TRANSACTIONS_SCHEMA, 'Amount');
+    var typeColIdx = pfColumnIndex_(PF_TRANSACTIONS_SCHEMA, 'Type');
+    var statusColIdx = pfColumnIndex_(PF_TRANSACTIONS_SCHEMA, 'Status');
+    
+    if (dateColIdx && amountColIdx && typeColIdx && statusColIdx) {
+      var lastRow = txSheet.getLastRow();
+      var data = txSheet.getRange(2, 1, lastRow - 1, PF_TRANSACTIONS_SCHEMA.columns.length).getValues();
+      
+      // Initialize day of week totals and counts
+      // JavaScript: 0=Sunday, 1=Monday, ..., 6=Saturday
+      // We'll convert to: 1=Monday, 2=Tuesday, ..., 7=Sunday
+      var dayTotals = [0, 0, 0, 0, 0, 0, 0]; // Monday to Sunday
+      var dayCounts = [0, 0, 0, 0, 0, 0, 0];
+      
+      for (var i = 0; i < data.length; i++) {
+        var rowData = data[i];
+        if (rowData.length <= dateColIdx || rowData.length <= amountColIdx || 
+            rowData.length <= typeColIdx || rowData.length <= statusColIdx) {
+          continue;
+        }
+        
+        var date = rowData[dateColIdx - 1];
+        var amount = Number(rowData[amountColIdx - 1]) || 0;
+        var type = rowData[typeColIdx - 1];
+        var status = rowData[statusColIdx - 1];
+        
+        // Filter: current month, expense type, ok status
+        if (date instanceof Date && date >= monthStart && date <= monthEnd && 
+            type === PF_TRANSACTION_TYPE.EXPENSE && status === PF_TRANSACTION_STATUS.OK) {
+          // Get day of week: 0=Sunday, 1=Monday, ..., 6=Saturday
+          var jsDayOfWeek = date.getDay();
+          // Convert to: 0=Monday, 1=Tuesday, ..., 6=Sunday
+          var dayIndex = jsDayOfWeek === 0 ? 6 : jsDayOfWeek - 1;
+          
+          dayTotals[dayIndex] += amount;
+          dayCounts[dayIndex]++;
+        }
+      }
+      
+      // Calculate averages and prepare data
+      var dayNames = lang === 'en' ? 
+        ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'] :
+        ['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота', 'Воскресенье'];
+      
+      var dayData = [];
+      if (lang === 'en') {
+        dayData.push(['Day of Week', 'Average Expense']);
+      } else {
+        dayData.push(['День недели', 'Средний расход']);
+      }
+      
+      for (var d = 0; d < 7; d++) {
+        var avgExpense = dayCounts[d] > 0 ? dayTotals[d] / dayCounts[d] : 0;
+        dayData.push([dayNames[d], avgExpense]);
+      }
+      
+      // Write data
+      dashboardSheet.getRange(row + 1, 1, dayData.length, 2).setValues(dayData);
+      dashboardSheet.getRange(row + 2, 2, 7, 1).setNumberFormat('#,##0.00');
+      
+      // Create bar chart
+      var dataRange = dashboardSheet.getRange(row + 1, 1, dayData.length, 2);
+      var chart = dashboardSheet.newChart()
+        .setChartType(Charts.ChartType.COLUMN)
+        .addRange(dataRange)
+        .setPosition(row + 1 + dayData.length, 1, 0, 0)
+        .setOption('title', lang === 'en' ? 'Average Expenses by Day of Week' : 'Средние расходы по дням недели')
+        .setOption('legend.position', 'none')
+        .setOption('hAxis.title', lang === 'en' ? 'Day of Week' : 'День недели')
+        .setOption('vAxis.title', lang === 'en' ? 'Average Expense' : 'Средний расход')
+        .setOption('width', 600)
+        .setOption('height', 400)
+        .build();
+      dashboardSheet.insertChart(chart);
+    }
+  }
+
+  row += 15; // Leave space for chart and data.
+
   // Format headers.
   var headerRanges = [
     dashboardSheet.getRange(1, 1),
