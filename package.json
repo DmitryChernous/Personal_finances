@@ -3,7 +3,6 @@
   "version": "1.0.0",
   "description": "Инструмент учета личных финансов на базе Google Sheets + Apps Script.",
   "private": true,
-  "main": "index.js",
   "scripts": {
     "clasp": "clasp",
     "login": "clasp login",
@@ -23,7 +22,6 @@
   "keywords": [],
   "author": "",
   "license": "MIT",
-  "type": "commonjs",
   "bugs": {
     "url": "https://github.com/DmitryChernous/Personal_finances/issues"
   },

@@ -120,22 +120,7 @@ function pfGenerateDedupeKey_(data, options) {
   }
   
   // Fallback: hash of key fields
-  var dateStr = '';
-  if (date) {
-    if (date instanceof Date) {
-      dateStr = Utilities.formatDate(date, Session.getScriptTimeZone(), 'yyyy-MM-dd');
-    } else if (typeof date === 'string') {
-      // Try to parse ISO string
-      try {
-        var dateObj = new Date(date);
-        if (!isNaN(dateObj.getTime())) {
-          dateStr = Utilities.formatDate(dateObj, Session.getScriptTimeZone(), 'yyyy-MM-dd');
-        }
-      } catch (e) {
-        // Ignore
-      }
-    }
-  }
+  var dateStr = pfFormatDateForDedupe_(date);
   
   var keyFields = [
     dateStr,
@@ -225,23 +210,17 @@ function pfTransactionDTOToRow_(transaction) {
     // Handle special cases
     if (col.key === 'Date') {
       // Date might be ISO string (from server) or Date object
-      if (value instanceof Date) {
+      var dateObj = pfISOStringToDate_(value);
+      if (dateObj) {
+        row.push(dateObj);
+      } else if (value instanceof Date) {
+        // Already a Date object
         row.push(value);
-      } else if (typeof value === 'string' && value.length > 0) {
-        // Try to parse ISO string back to Date
-        try {
-          var dateObj = new Date(value);
-          if (!isNaN(dateObj.getTime())) {
-            row.push(dateObj);
-          } else {
-            pfLogWarning_('Invalid date string: ' + value, 'pfTransactionDTOToRow_');
-            row.push('');
-          }
-        } catch (e) {
-          pfLogWarning_('Error parsing date: ' + e.toString(), 'pfTransactionDTOToRow_');
-          row.push('');
-        }
       } else {
+        // Invalid or empty date
+        if (value && typeof value === 'string' && value.length > 0) {
+          pfLogWarning_('Invalid date string: ' + value, 'pfTransactionDTOToRow_');
+        }
         row.push('');
       }
     } else if (col.key === 'Amount' && typeof value === 'number') {
@@ -605,20 +584,18 @@ function pfCommitImport_(includeNeedsReview) {
         var value = row[j];
         
         // If this is the Date column and value is a string (ISO format), convert to Date
-        if (dateColIdx && j === dateColIdx - 1 && typeof value === 'string' && value.length > 0) {
-          try {
-            var dateObj = new Date(value);
-            if (!isNaN(dateObj.getTime())) {
-              processedRow.push(dateObj);
-              if (i < 3) {
-                Logger.log('[SERVER] Converted date string to Date: ' + value + ' -> ' + dateObj.toISOString());
-              }
-            } else {
+        if (dateColIdx && j === dateColIdx - 1) {
+          var dateObj = pfISOStringToDate_(value);
+          if (dateObj) {
+            processedRow.push(dateObj);
+          } else if (value instanceof Date) {
+            // Already a Date object
+            processedRow.push(value);
+          } else {
+            // Keep as-is if can't parse (might be empty or invalid)
+            if (value && typeof value === 'string' && value.length > 0) {
               pfLogWarning_('Invalid date string in row ' + (i + 2) + ': ' + value, 'pfCommitImport_');
-              processedRow.push(value); // Keep as string if can't parse
             }
-          } catch (e) {
-            pfLogWarning_('Error parsing date in row ' + (i + 2) + ': ' + e.toString(), 'pfCommitImport_');
             processedRow.push(value);
           }
         } else {
@@ -909,16 +886,14 @@ function pfProcessDataBatch(rawDataJson, importerType, options, batchSize, start
         
         // Convert Date objects to ISO strings for JSON serialization
         // This prevents issues when passing through google.script.run
-        if (transaction.date instanceof Date) {
-          transaction.date = transaction.date.toISOString();
-        }
+        transaction.date = pfDateToISOString_(transaction.date);
         
         transactions.push(transaction);
       } catch (e) {
         pfLogError_(e, 'pfProcessDataBatch', PF_LOG_LEVEL.ERROR);
         stats.errors++;
         transactions.push({
-          date: new Date().toISOString(), // Use ISO string instead of Date object
+          date: pfDateToISOString_(new Date()), // Use ISO string instead of Date object
           type: PF_TRANSACTION_TYPE.EXPENSE,
           account: '',
           amount: 0,
