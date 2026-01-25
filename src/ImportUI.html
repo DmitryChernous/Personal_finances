@@ -389,16 +389,51 @@
       var processed = 0;
       var batchIndex = 0;
       
+      // Store total count in options for server-side function
+      options._totalCount = totalCount;
+      
       function processNextBatch() {
+        if (processed >= totalCount) {
+          // All processed, write preview
+          updateProgress('Запись предпросмотра в таблицу...', 90);
+          google.script.run
+            .withSuccessHandler(function(preview) {
+              hideProgress();
+              previewData = preview;
+              preview.stats.total = allTransactions.length;
+              preview.stats.valid = totalStats.valid;
+              preview.stats.needsReview = totalStats.needsReview;
+              preview.stats.duplicates = totalStats.duplicates;
+              showStats(preview.stats);
+              document.getElementById('message').innerHTML = 
+                '<div class="success">Предпросмотр готов. Проверьте лист "' + preview.stagingSheetName + '"</div>';
+              document.getElementById('previewBtn').disabled = false;
+              document.getElementById('commitBtn').disabled = false;
+              document.getElementById('commitWithReviewBtn').disabled = false;
+            })
+            .withFailureHandler(function(error) {
+              hideProgress();
+              showError('Ошибка при создании предпросмотра: ' + (error.message || error.toString()));
+              document.getElementById('previewBtn').disabled = false;
+            })
+            .pfWritePreview(JSON.stringify(allTransactions));
+          return;
+        }
+        
         // Calculate progress (15% to 85%)
         var progress = 15 + Math.floor((processed / totalCount) * 70);
         var remaining = totalCount - processed;
         updateProgress('Обработка транзакций: ' + processed + ' из ' + totalCount + ' (' + remaining + ' осталось)...', progress);
         
-        // Process batch
-        // Note: For large files, we need to pass data more efficiently
-        // Instead of passing entire rawData, we'll process it server-side in one go
-        // and just update progress from client
+        // Extract only the batch we need (not the entire array)
+        var batchEnd = Math.min(processed + batchSize, totalCount);
+        var batchData = rawData.slice(processed, batchEnd);
+        
+        // Process batch - pass only the batch data, not entire array
+        // Also pass current processed count so server knows the offset
+        var batchOptions = Object.assign({}, options);
+        batchOptions._startIndex = processed;
+        
         google.script.run
           .withSuccessHandler(function(batchResult) {
             allTransactions = allTransactions.concat(batchResult.transactions);
@@ -442,7 +477,7 @@
             showError('Ошибка при обработке данных (строка ' + (processed + 1) + '): ' + (error.message || error.toString()));
             document.getElementById('previewBtn').disabled = false;
           })
-          .pfProcessDataBatch(JSON.stringify(rawData), importerType, options, batchSize, processed);
+          .pfProcessDataBatch(JSON.stringify(batchData), importerType, batchOptions, batchSize, processed);
       }
       
       // Start processing

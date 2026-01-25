@@ -511,9 +511,10 @@ function pfParseFileContent(fileContent, importerType, options) {
  */
 function pfProcessDataBatch(rawDataJson, importerType, options, batchSize, startIndex) {
   // Parse JSON string back to array
+  // Note: rawDataJson now contains only the batch data, not the entire array
   var rawData = JSON.parse(rawDataJson);
   batchSize = batchSize || 100;
-  startIndex = startIndex || 0;
+  startIndex = startIndex || 0; // Should be 0 since we pass only batch data
   options = options || {};
   
   var importer = null;
@@ -526,7 +527,6 @@ function pfProcessDataBatch(rawDataJson, importerType, options, batchSize, start
   }
   
   var sourceName = importerType === 'sberbank' ? 'import:sberbank' : 'import:csv';
-  var endIndex = Math.min(startIndex + batchSize, rawData.length);
   var transactions = [];
   var stats = {
     valid: 0,
@@ -535,13 +535,24 @@ function pfProcessDataBatch(rawDataJson, importerType, options, batchSize, start
     errors: 0
   };
   
-  // Get existing keys only once (cache it)
-  if (!options._existingKeys) {
-    options._existingKeys = pfGetExistingTransactionKeys_();
+  // Get existing keys only once (cache it in ScriptProperties for persistence across calls)
+  var existingKeys = null;
+  var cacheKey = 'pf_import_existing_keys';
+  var cachedKeys = PropertiesService.getScriptProperties().getProperty(cacheKey);
+  if (cachedKeys) {
+    try {
+      existingKeys = JSON.parse(cachedKeys);
+    } catch (e) {
+      existingKeys = pfGetExistingTransactionKeys_();
+      PropertiesService.getScriptProperties().setProperty(cacheKey, JSON.stringify(existingKeys));
+    }
+  } else {
+    existingKeys = pfGetExistingTransactionKeys_();
+    PropertiesService.getScriptProperties().setProperty(cacheKey, JSON.stringify(existingKeys));
   }
-  var existingKeys = options._existingKeys;
   
-  for (var i = startIndex; i < endIndex; i++) {
+  // Process all items in the batch (rawData is already the batch)
+  for (var i = 0; i < rawData.length; i++) {
     try {
       var transaction = importer.normalize(rawData[i], options);
       var dedupeKey = importer.dedupeKey(transaction);
@@ -578,12 +589,19 @@ function pfProcessDataBatch(rawDataJson, importerType, options, batchSize, start
     }
   }
   
+  // Update cache
+  PropertiesService.getScriptProperties().setProperty(cacheKey, JSON.stringify(existingKeys));
+  
+  // Calculate processed count (startIndex + batch length)
+  var processed = (options._startIndex || startIndex) + rawData.length;
+  var totalCount = options._totalCount || rawData.length;
+  
   return {
     transactions: transactions,
     stats: stats,
-    processed: endIndex,
-    total: rawData.length,
-    hasMore: endIndex < rawData.length
+    processed: processed,
+    total: totalCount,
+    hasMore: processed < totalCount
   };
 }
 
