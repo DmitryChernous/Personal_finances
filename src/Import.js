@@ -415,6 +415,11 @@ function pfPreviewImport_(transactions) {
         stagingSheet.getRange(i + 2, 1, 1, rows[0].length).setBackground('#FFE6E6');
       } else if (transactions[i].status === 'duplicate') {
         stagingSheet.getRange(i + 2, 1, 1, rows[0].length).setBackground('#FFFFE6');
+        // Add note with dedupe key for easy lookup
+        var dedupeKeyCol = rows[0].length; // Last column
+        var dedupeKey = pfGenerateDedupeKey_(transactions[i]);
+        var note = 'Дубликат. Ключ: ' + dedupeKey + '\nИспользуйте меню "Personal finances → Найти дубликат" для поиска оригинала.';
+        stagingSheet.getRange(i + 2, dedupeKeyCol).setNote(note);
       }
     }
   }
@@ -438,6 +443,104 @@ function pfPreviewImport_(transactions) {
     stats: stats,
     stagingSheetName: stagingSheet.getName()
   };
+}
+
+/**
+ * Find existing transaction by deduplication key.
+ * Public function for HTML Service - helps user find duplicate transactions.
+ * @param {string} dedupeKey - Deduplication key (e.g., 'import:sberbank:160620251146306495')
+ * @returns {Object} {found: boolean, rowNum: number, transaction: Object}
+ */
+function pfFindDuplicateTransaction(dedupeKey) {
+  Logger.log('[SERVER] pfFindDuplicateTransaction called with key: ' + dedupeKey);
+  
+  if (!dedupeKey || typeof dedupeKey !== 'string') {
+    return { found: false, message: 'Неверный ключ дедупликации' };
+  }
+  
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var txSheet = pfFindSheetByKey_(ss, PF_SHEET_KEYS.TRANSACTIONS);
+  if (!txSheet || txSheet.getLastRow() <= 1) {
+    return { found: false, message: 'Лист транзакций пуст' };
+  }
+  
+  var sourceCol = pfColumnIndex_(PF_TRANSACTIONS_SCHEMA, 'Source');
+  var sourceIdCol = pfColumnIndex_(PF_TRANSACTIONS_SCHEMA, 'SourceId');
+  var dateCol = pfColumnIndex_(PF_TRANSACTIONS_SCHEMA, 'Date');
+  var accountCol = pfColumnIndex_(PF_TRANSACTIONS_SCHEMA, 'Account');
+  var amountCol = pfColumnIndex_(PF_TRANSACTIONS_SCHEMA, 'Amount');
+  var typeCol = pfColumnIndex_(PF_TRANSACTIONS_SCHEMA, 'Type');
+  
+  if (!sourceCol || !dateCol || !accountCol || !amountCol || !typeCol) {
+    return { found: false, message: 'Ошибка: не найдены необходимые колонки' };
+  }
+  
+  var data = txSheet.getRange(2, 1, txSheet.getLastRow() - 1, PF_TRANSACTIONS_SCHEMA.columns.length).getValues();
+  
+  // Parse dedupeKey to extract source and sourceId or hash
+  var parts = dedupeKey.split(':');
+  if (parts.length < 2) {
+    return { found: false, message: 'Неверный формат ключа дедупликации' };
+  }
+  
+  var source = parts[0];
+  var keySuffix = parts.slice(1).join(':'); // Everything after first ':'
+  
+  for (var i = 0; i < data.length; i++) {
+    var row = data[i];
+    var rowSource = row[sourceCol - 1];
+    var rowSourceId = sourceIdCol ? row[sourceIdCol - 1] : null;
+    
+    // Check if this row matches the dedupeKey
+    var rowKey = null;
+    if (rowSourceId) {
+      rowKey = rowSource + ':' + rowSourceId;
+    } else {
+      // Generate hash key
+      var date = row[dateCol - 1];
+      var account = row[accountCol - 1];
+      var amount = row[amountCol - 1];
+      var type = row[typeCol - 1];
+      
+      var keyFields = [
+        date ? Utilities.formatDate(date, Session.getScriptTimeZone(), 'yyyy-MM-dd') : '',
+        account || '',
+        String(amount || ''),
+        type || ''
+      ].join('|');
+      
+      var hash = Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, keyFields).map(function(b) {
+        return ('0' + (b & 0xFF).toString(16)).slice(-2);
+      }).join('');
+      
+      rowKey = (rowSource || 'unknown') + ':' + hash;
+    }
+    
+    if (rowKey === dedupeKey) {
+      // Found it!
+      var transaction = {
+        date: row[dateCol - 1],
+        type: row[typeCol - 1],
+        account: row[accountCol - 1],
+        amount: row[amountCol - 1],
+        currency: pfColumnIndex_(PF_TRANSACTIONS_SCHEMA, 'Currency') ? row[pfColumnIndex_(PF_TRANSACTIONS_SCHEMA, 'Currency') - 1] : '',
+        description: pfColumnIndex_(PF_TRANSACTIONS_SCHEMA, 'Description') ? row[pfColumnIndex_(PF_TRANSACTIONS_SCHEMA, 'Description') - 1] : '',
+        source: rowSource,
+        sourceId: rowSourceId
+      };
+      
+      Logger.log('[SERVER] Found duplicate at row ' + (i + 2));
+      return {
+        found: true,
+        rowNum: i + 2, // 1-based row number (header is row 1)
+        transaction: transaction,
+        message: 'Найдена дублирующая транзакция в строке ' + (i + 2) + ' листа "Транзакции"'
+      };
+    }
+  }
+  
+  Logger.log('[SERVER] Duplicate not found');
+  return { found: false, message: 'Дублирующая транзакция не найдена в листе "Транзакции". Возможно, это ложное срабатывание.' };
 }
 
 /**
