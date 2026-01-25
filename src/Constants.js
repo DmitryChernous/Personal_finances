@@ -101,3 +101,13 @@ var PF_BUDGET_PERIOD = {
  * If remaining <= 20% of plan, status is WARNING.
  */
 var PF_BUDGET_WARNING_THRESHOLD = 0.20;
+
+/**
+ * Recurring transaction frequency values.
+ */
+var PF_RECURRING_FREQUENCY = {
+  WEEKLY: 'weekly',
+  MONTHLY: 'monthly',
+  QUARTERLY: 'quarterly',
+  YEARLY: 'yearly'
+};

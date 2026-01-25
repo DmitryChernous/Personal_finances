@@ -81,3 +81,30 @@ var PF_BUDGETS_SCHEMA = {
   ]
 };
 
+/**
+ * Recurring Transactions sheet schema.
+ * Headers are resolved via i18n using `key` (see `src/I18n.js`).
+ */
+var PF_RECURRING_TRANSACTIONS_SCHEMA = {
+  sheetKey: 'recurring_transactions',
+  columns: [
+    { key: 'Name', required: true },
+    { key: 'Type', required: true, allowed: ['expense', 'income', 'transfer'] },
+    { key: 'Frequency', required: true, allowed: ['weekly', 'monthly', 'quarterly', 'yearly'] },
+    { key: 'DayOfMonth', required: false }, // 1-31, required for monthly/quarterly/yearly
+    { key: 'DayOfWeek', required: false }, // 1-7 (1=Monday), required for weekly
+    { key: 'StartDate', required: true },
+    { key: 'EndDate', required: false },
+    { key: 'Account', required: true },
+    { key: 'AccountTo', required: false },
+    { key: 'Amount', required: true },
+    { key: 'Currency', required: true },
+    { key: 'Category', required: false },
+    { key: 'Subcategory', required: false },
+    { key: 'Merchant', required: false },
+    { key: 'Description', required: false },
+    { key: 'Active', required: false },
+    { key: 'LastCreated', required: false } // Date of last transaction created
+  ]
+};
+

@@ -23,7 +23,8 @@ var PF_SHEET_KEYS = {
   DASHBOARD: 'dashboard',
   HELP: 'help',
   IMPORT_RAW: 'import_raw',
-  BUDGETS: 'budgets'
+  BUDGETS: 'budgets',
+  RECURRING_TRANSACTIONS: 'recurring_transactions'
 };
 
 var PF_I18N = {
@@ -40,6 +41,7 @@ var PF_I18N = {
       create_template: 'Создать шаблон',
       find_duplicate: 'Найти дубликат (по ключу)',
       update_budgets: 'Обновить бюджеты',
+      create_recurring: 'Создать регулярные платежи',
       language: 'Язык',
       lang_ru: 'Русский',
       lang_en: 'English'
@@ -53,7 +55,8 @@ var PF_I18N = {
       dashboard: 'Дашборд',
       help: 'Инструкция',
       import_raw: 'Импорт (черновик)',
-      budgets: 'Бюджеты'
+      budgets: 'Бюджеты',
+      recurring_transactions: 'Регулярные платежи'
     },
     columns: {
       Date: 'Дата',
@@ -84,6 +87,12 @@ var PF_I18N = {
       ok: 'В норме',
       warning: 'Предупреждение',
       exceeded: 'Превышен'
+    },
+    recurring_frequency: {
+      weekly: 'Еженедельно',
+      monthly: 'Ежемесячно',
+      quarterly: 'Ежеквартально',
+      yearly: 'Ежегодно'
     }
   },
   en: {
@@ -99,6 +108,7 @@ var PF_I18N = {
       create_template: 'Create template',
       find_duplicate: 'Find duplicate (by key)',
       update_budgets: 'Update budgets',
+      create_recurring: 'Create recurring transactions',
       language: 'Language',
       lang_ru: 'Русский',
       lang_en: 'English'
@@ -112,7 +122,8 @@ var PF_I18N = {
       dashboard: 'Dashboard',
       help: 'Help',
       import_raw: 'Import (Staging)',
-      budgets: 'Budgets'
+      budgets: 'Budgets',
+      recurring_transactions: 'Recurring Transactions'
     },
     columns: {
       Date: 'Date',
@@ -137,12 +148,25 @@ var PF_I18N = {
       PeriodValue: 'Period Value',
       Fact: 'Fact',
       Remaining: 'Remaining',
-      PercentUsed: '% Used'
+      PercentUsed: '% Used',
+      Name: 'Name',
+      Frequency: 'Frequency',
+      DayOfMonth: 'Day of Month',
+      DayOfWeek: 'Day of Week',
+      StartDate: 'Start Date',
+      EndDate: 'End Date',
+      LastCreated: 'Last Created'
     },
     budget_status: {
       ok: 'OK',
       warning: 'Warning',
       exceeded: 'Exceeded'
+    },
+    recurring_frequency: {
+      weekly: 'Weekly',
+      monthly: 'Monthly',
+      quarterly: 'Quarterly',
+      yearly: 'Yearly'
     }
   }
 };

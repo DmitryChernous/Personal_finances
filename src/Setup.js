@@ -61,6 +61,9 @@ function pfRunSetup_() {
   // Initialize Budgets sheet.
   pfInitializeBudgets_(ss);
 
+  // Initialize RecurringTransactions sheet.
+  pfInitializeRecurringTransactions_(ss);
+
   SpreadsheetApp.flush();
 }
 
