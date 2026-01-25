@@ -86,7 +86,8 @@
   
   <div class="section">
     <label for="fileInput">Выберите файл:</label>
-    <input type="file" id="fileInput" accept=".csv,.txt">
+    <input type="file" id="fileInput" accept=".csv,.txt" style="width: 100%; margin-bottom: 5px;">
+    <div id="fileInfo" style="font-size: 12px; color: #666; margin-top: 5px;"></div>
   </div>
   
   <div class="section">
@@ -141,6 +142,7 @@
             try {
               fileContent = e.target.result;
               if (fileContent && fileContent.length > 0) {
+                document.getElementById('fileInfo').textContent = 'Файл: ' + file.name + ' (' + fileContent.length + ' символов)';
                 document.getElementById('message').innerHTML = 
                   '<div class="success">Файл загружен: ' + file.name + ' (' + fileContent.length + ' символов)</div>';
                 // Reset preview
@@ -151,21 +153,27 @@
                 document.getElementById('stats').style.display = 'none';
               } else {
                 showError('Файл пуст или не удалось прочитать содержимое');
+                document.getElementById('fileInfo').textContent = '';
                 document.getElementById('previewBtn').disabled = true;
+                fileContent = null;
               }
             } catch (err) {
               showError('Ошибка при чтении файла: ' + err.message);
+              document.getElementById('fileInfo').textContent = '';
               document.getElementById('previewBtn').disabled = true;
+              fileContent = null;
             }
           };
           reader.onerror = function(e) {
-            showError('Ошибка при чтении файла');
+            showError('Ошибка при чтении файла. Код ошибки: ' + (e.target.error ? e.target.error.code : 'unknown'));
+            document.getElementById('fileInfo').textContent = '';
             document.getElementById('previewBtn').disabled = true;
             fileContent = null;
           };
           reader.readAsText(file, 'UTF-8');
         } else {
           fileContent = null;
+          document.getElementById('fileInfo').textContent = '';
           document.getElementById('previewBtn').disabled = true;
           document.getElementById('message').innerHTML = '';
         }
