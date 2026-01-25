@@ -11,6 +11,19 @@
  * Shows confirmation dialog and clears all transaction data, optionally keeps demo categories/accounts.
  */
 function pfCreateTemplate() {
+  // Валидация: проверяем, что таблица существует и доступна
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    if (!ss) {
+      SpreadsheetApp.getUi().alert('Ошибка', 'Не удалось получить доступ к таблице', SpreadsheetApp.getUi().ButtonSet.OK);
+      return;
+    }
+  } catch (e) {
+    pfLogError_(e, 'pfCreateTemplate', PF_LOG_LEVEL.ERROR);
+    SpreadsheetApp.getUi().alert('Ошибка', 'Ошибка доступа к таблице: ' + e.toString(), SpreadsheetApp.getUi().ButtonSet.OK);
+    return;
+  }
+  
   var ui = SpreadsheetApp.getUi();
   
   var response = ui.alert(

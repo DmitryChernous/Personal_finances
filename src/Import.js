@@ -485,8 +485,16 @@ function pfPreviewImport_(transactions) {
  * @returns {Object} {found: boolean, rowNum: number, transaction: Object}
  */
 function pfFindDuplicateTransaction(dedupeKey) {
-  if (!dedupeKey || typeof dedupeKey !== 'string') {
-    return { found: false, message: 'Неверный ключ дедупликации' };
+  // Валидация входных данных
+  if (!dedupeKey || typeof dedupeKey !== 'string' || dedupeKey.trim().length === 0) {
+    return { found: false, message: 'Неверный ключ дедупликации: должен быть непустой строкой' };
+  }
+  
+  dedupeKey = dedupeKey.trim();
+  
+  // Валидация формата ключа (должен содержать хотя бы одно двоеточие)
+  if (dedupeKey.indexOf(':') === -1) {
+    return { found: false, message: 'Неверный формат ключа дедупликации: должен содержать ":"' };
   }
   
   var ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -579,6 +587,12 @@ function pfFindDuplicateTransaction(dedupeKey) {
  * @returns {Object} Commit result
  */
 function pfCommitImport(includeNeedsReview) {
+  // Валидация входных данных
+  if (includeNeedsReview !== undefined && typeof includeNeedsReview !== 'boolean') {
+    pfLogWarning_('includeNeedsReview should be boolean, got: ' + typeof includeNeedsReview, 'pfCommitImport');
+    includeNeedsReview = Boolean(includeNeedsReview);
+  }
+  
   return pfCommitImport_(includeNeedsReview);
 }
 
@@ -743,8 +757,12 @@ function pfCommitImport_(includeNeedsReview) {
  */
 function pfDetectFileFormat(fileContent) {
   // Валидация входных данных
-  if (!fileContent || typeof fileContent !== 'string') {
+  if (!fileContent || typeof fileContent !== 'string' || fileContent.trim().length === 0) {
     throw new Error('fileContent must be a non-empty string');
+  }
+  
+  if (fileContent.length > PF_IMPORT_MAX_FILE_SIZE) {
+    throw new Error('File too large: ' + Math.round(fileContent.length / 1024 / 1024) + 'MB. Maximum is ' + Math.round(PF_IMPORT_MAX_FILE_SIZE / 1024 / 1024) + 'MB.');
   }
   
   // Ограничение размера для проверки (первые 100KB достаточно для определения формата)
@@ -768,18 +786,19 @@ function pfDetectFileFormat(fileContent) {
  */
 function pfParseFileContent(fileContent, importerType, options) {
   // Валидация входных данных
-  if (!fileContent || typeof fileContent !== 'string') {
+  if (!fileContent || typeof fileContent !== 'string' || fileContent.trim().length === 0) {
     throw new Error('fileContent must be a non-empty string');
   }
-  if (!importerType || !['sberbank', 'csv'].includes(importerType)) {
-    throw new Error('Invalid importerType: ' + importerType);
+  
+  if (!importerType || typeof importerType !== 'string' || !['sberbank', 'csv'].includes(importerType)) {
+    throw new Error('Invalid importerType: must be "sberbank" or "csv", got: ' + String(importerType));
   }
   
-  // Ограничение размера файла (50MB)
-  var maxSize = 50 * 1024 * 1024; // 50MB
-  if (fileContent.length > maxSize) {
-    throw new Error('File too large: ' + Math.round(fileContent.length / 1024 / 1024) + 'MB. Maximum is 50MB.');
+  if (fileContent.length > PF_IMPORT_MAX_FILE_SIZE) {
+    throw new Error('File too large: ' + Math.round(fileContent.length / 1024 / 1024) + 'MB. Maximum is ' + Math.round(PF_IMPORT_MAX_FILE_SIZE / 1024 / 1024) + 'MB.');
   }
+  
+  options = options || {};
   
   options = options || {};
   var importer = null;
@@ -826,29 +845,35 @@ function pfParseFileContent(fileContent, importerType, options) {
  * @returns {Object} {transactions: Array, stats: Object, processed: number, total: number, hasMore: boolean}
  */
 function pfProcessDataBatch(rawDataJson, importerType, options, batchSize, startIndex) {
-  Logger.log('[SERVER] pfProcessDataBatch called at ' + new Date().toISOString());
-  Logger.log('[SERVER] Parameters: importerType=' + importerType + ', batchSize=' + batchSize + ', startIndex=' + startIndex);
-  Logger.log('[SERVER] rawDataJson length: ' + (rawDataJson ? rawDataJson.length : 0));
-  
   try {
     // Валидация входных данных
-    if (!rawDataJson || typeof rawDataJson !== 'string') {
+    if (!rawDataJson || typeof rawDataJson !== 'string' || rawDataJson.trim().length === 0) {
       pfLogError_('rawDataJson validation failed', 'pfProcessDataBatch', PF_LOG_LEVEL.ERROR);
       throw new Error('rawDataJson must be a non-empty string');
     }
-    if (!importerType || !['sberbank', 'csv'].includes(importerType)) {
-      pfLogError_('Invalid importerType: ' + importerType, 'pfProcessDataBatch', PF_LOG_LEVEL.ERROR);
-      throw new Error('Invalid importerType: ' + importerType);
-    }
-    batchSize = batchSize || 100;
-    if (batchSize < 1 || batchSize > 1000) {
-      pfLogError_('Invalid batchSize: ' + batchSize, 'pfProcessDataBatch', PF_LOG_LEVEL.ERROR);
-      throw new Error('batchSize must be between 1 and 1000');
-    }
-    startIndex = startIndex || 0;
-    options = options || {};
     
-    Logger.log('[SERVER] Validation passed');
+    if (!importerType || typeof importerType !== 'string' || !['sberbank', 'csv'].includes(importerType)) {
+      pfLogError_('Invalid importerType: ' + importerType, 'pfProcessDataBatch', PF_LOG_LEVEL.ERROR);
+      throw new Error('Invalid importerType: must be "sberbank" or "csv", got: ' + String(importerType));
+    }
+    
+    batchSize = batchSize || PF_IMPORT_BATCH_SIZE;
+    if (typeof batchSize !== 'number' || isNaN(batchSize) || batchSize < 1 || batchSize > 1000) {
+      pfLogError_('Invalid batchSize: ' + batchSize, 'pfProcessDataBatch', PF_LOG_LEVEL.ERROR);
+      throw new Error('batchSize must be a number between 1 and 1000, got: ' + String(batchSize));
+    }
+    
+    startIndex = startIndex || 0;
+    if (typeof startIndex !== 'number' || isNaN(startIndex) || startIndex < 0) {
+      pfLogWarning_('Invalid startIndex: ' + startIndex + ', using 0', 'pfProcessDataBatch');
+      startIndex = 0;
+    }
+    
+    options = options || {};
+    if (typeof options !== 'object') {
+      pfLogWarning_('options should be an object, got: ' + typeof options + ', using {}', 'pfProcessDataBatch');
+      options = {};
+    }
     
     // Parse JSON string back to array
     // Note: rawDataJson now contains only the batch data, not the entire array
@@ -998,7 +1023,7 @@ function pfProcessDataBatch(rawDataJson, importerType, options, batchSize, start
  */
 function pfWritePreview(transactionsJson) {
   // Валидация входных данных
-  if (!transactionsJson || typeof transactionsJson !== 'string') {
+  if (!transactionsJson || typeof transactionsJson !== 'string' || transactionsJson.trim().length === 0) {
     throw new Error('transactionsJson must be a non-empty string');
   }
   
@@ -1007,16 +1032,21 @@ function pfWritePreview(transactionsJson) {
   try {
     transactions = JSON.parse(transactionsJson);
   } catch (e) {
+    pfLogError_(e, 'pfWritePreview', PF_LOG_LEVEL.ERROR);
     throw new Error('Invalid JSON in transactionsJson: ' + e.toString());
   }
   
   if (!Array.isArray(transactions)) {
-    throw new Error('transactions must be an array');
+    throw new Error('transactions must be an array, got: ' + typeof transactions);
   }
   
   // Ограничение размера для безопасности
-  if (transactions.length > 10000) {
-    throw new Error('Too many transactions: ' + transactions.length + '. Maximum is 10000.');
+  if (transactions.length > PF_IMPORT_MAX_TRANSACTIONS) {
+    throw new Error('Too many transactions: ' + transactions.length + '. Maximum is ' + PF_IMPORT_MAX_TRANSACTIONS + '.');
+  }
+  
+  if (transactions.length === 0) {
+    throw new Error('transactions array is empty');
   }
   
   return pfPreviewImport_(transactions);
