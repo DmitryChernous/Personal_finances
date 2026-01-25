@@ -51,6 +51,7 @@ var PF_I18N = {
       export_transactions_json: 'Транзакции (JSON)',
       export_all_data_json: 'Все данные (JSON)',
       create_backup: 'Создать резервную копию',
+      archive_old_transactions: 'Архивировать старые транзакции',
       language: 'Язык',
       lang_ru: 'Русский',
       lang_en: 'English'
@@ -144,6 +145,7 @@ var PF_I18N = {
       export_transactions_json: 'Transactions (JSON)',
       export_all_data_json: 'All Data (JSON)',
       create_backup: 'Create Backup',
+      archive_old_transactions: 'Archive Old Transactions',
       language: 'Language',
       lang_ru: 'Русский',
       lang_en: 'English'

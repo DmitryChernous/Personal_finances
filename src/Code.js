@@ -21,6 +21,8 @@ function onOpen() {
   menu.addItem(pfT_('menu.import_transactions'), 'pfImportTransactions');
   menu.addItem(pfT_('menu.find_duplicate'), 'pfFindDuplicateByKey');
   menu.addSeparator();
+  menu.addItem(pfT_('menu.archive_old_transactions'), 'pfArchiveOldTransactions');
+  menu.addSeparator();
   menu.addItem(pfT_('menu.generate_test_data'), 'pfGenerateTestData');
   menu.addItem(pfT_('menu.create_template'), 'pfCreateTemplate');
   menu.addSeparator();
