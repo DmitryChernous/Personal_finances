@@ -14,6 +14,7 @@ function onOpen() {
   menu.addItem(pfT_('menu.refresh_dashboard'), 'pfRefreshDashboard');
   menu.addSeparator();
   menu.addItem(pfT_('menu.import_transactions'), 'pfImportTransactions');
+  menu.addItem('Найти дубликат (по ключу)', 'pfFindDuplicateByKey');
   menu.addSeparator();
   menu.addItem(pfT_('menu.generate_test_data'), 'pfGenerateTestData');
 
@@ -59,5 +60,55 @@ function onEdit(e) {
 function pfSetup() {
   pfRunSetup_();
   SpreadsheetApp.getUi().alert('Готово: таблица инициализирована/обновлена.');
+}
+
+/**
+ * Find duplicate transaction by deduplication key.
+ * Shows dialog to enter key, then searches and highlights the transaction.
+ */
+function pfFindDuplicateByKey() {
+  var ui = SpreadsheetApp.getUi();
+  var response = ui.prompt(
+    'Поиск дубликата',
+    'Введите ключ дедупликации (из столбца "Ключ дедупликации" в листе предпросмотра):',
+    ui.ButtonSet.OK_CANCEL
+  );
+  
+  if (response.getSelectedButton() === ui.Button.OK) {
+    var dedupeKey = response.getResponseText().trim();
+    if (!dedupeKey) {
+      ui.alert('Ошибка', 'Ключ дедупликации не может быть пустым', ui.ButtonSet.OK);
+      return;
+    }
+    
+    var result = pfFindDuplicateTransaction(dedupeKey);
+    
+    if (result.found) {
+      var tx = result.transaction;
+      var message = 'Найдена дублирующая транзакция:\n\n' +
+                   'Строка: ' + result.rowNum + '\n' +
+                   'Дата: ' + (tx.date ? Utilities.formatDate(tx.date, Session.getScriptTimeZone(), 'dd.MM.yyyy') : '') + '\n' +
+                   'Тип: ' + tx.type + '\n' +
+                   'Счет: ' + tx.account + '\n' +
+                   'Сумма: ' + tx.amount + ' ' + tx.currency + '\n' +
+                   'Описание: ' + (tx.description || '') + '\n' +
+                   'Источник: ' + tx.source + '\n' +
+                   (tx.sourceId ? 'ID источника: ' + tx.sourceId + '\n' : '') +
+                   '\nПерейти к этой транзакции?';
+      
+      var goToResponse = ui.alert('Дубликат найден', message, ui.ButtonSet.YES_NO);
+      
+      if (goToResponse === ui.Button.YES) {
+        var ss = SpreadsheetApp.getActiveSpreadsheet();
+        var txSheet = pfFindSheetByKey_(ss, PF_SHEET_KEYS.TRANSACTIONS);
+        if (txSheet) {
+          txSheet.setActiveRange(txSheet.getRange(result.rowNum, 1));
+          ss.setActiveSheet(txSheet);
+        }
+      }
+    } else {
+      ui.alert('Не найдено', result.message || 'Дублирующая транзакция не найдена', ui.ButtonSet.OK);
+    }
+  }
 }
 
