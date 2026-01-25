@@ -196,8 +196,6 @@ function pfValidateTransactionDTO_(transaction) {
  * @returns {Array<*>} Row array with values in schema order
  */
 function pfTransactionDTOToRow_(transaction) {
-  Logger.log('[SERVER] pfTransactionDTOToRow_ called, transaction keys: ' + Object.keys(transaction).join(', '));
-  
   var row = [];
   var schema = PF_TRANSACTIONS_SCHEMA;
   
@@ -224,8 +222,6 @@ function pfTransactionDTOToRow_(transaction) {
     var transactionKey = keyMap[col.key] || col.key.toLowerCase();
     var value = transaction[transactionKey];
     
-    Logger.log('[SERVER] Column ' + i + ': schemaKey=' + col.key + ', transactionKey=' + transactionKey + ', value=' + (value !== undefined ? String(value).substring(0, 50) : 'undefined'));
-    
     // Handle special cases
     if (col.key === 'Date') {
       // Date might be ISO string (from server) or Date object
@@ -238,11 +234,11 @@ function pfTransactionDTOToRow_(transaction) {
           if (!isNaN(dateObj.getTime())) {
             row.push(dateObj);
           } else {
-            Logger.log('[SERVER] WARNING: Invalid date string: ' + value);
+            pfLogWarning_('Invalid date string: ' + value, 'pfTransactionDTOToRow_');
             row.push('');
           }
         } catch (e) {
-          Logger.log('[SERVER] ERROR parsing date: ' + e.toString());
+          pfLogWarning_('Error parsing date: ' + e.toString(), 'pfTransactionDTOToRow_');
           row.push('');
         }
       } else {
@@ -257,7 +253,6 @@ function pfTransactionDTOToRow_(transaction) {
     }
   }
   
-  Logger.log('[SERVER] pfTransactionDTOToRow_ returning row with ' + row.length + ' values');
   return row;
 }
 
@@ -403,8 +398,6 @@ function pfGetExistingTransactionKeys_() {
  * @returns {Object} Preview data for UI
  */
 function pfPreviewImport_(transactions) {
-  Logger.log('[SERVER] pfPreviewImport_ called with ' + transactions.length + ' transactions');
-  
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var stagingSheet = pfEnsureImportRawSheet_(ss);
   
@@ -413,7 +406,6 @@ function pfPreviewImport_(transactions) {
   if (lastRow > 1) {
     var rowsToDelete = lastRow - 1; // Exclude header row
     if (rowsToDelete > 0) {
-      Logger.log('[SERVER] Clearing existing staging data: ' + rowsToDelete + ' rows');
       pfClearSheetRows_(stagingSheet, 2, rowsToDelete);
     }
   }
@@ -422,17 +414,7 @@ function pfPreviewImport_(transactions) {
   var rows = [];
   for (var i = 0; i < transactions.length; i++) {
     var tx = transactions[i];
-    
-    if (i < 3) {
-      Logger.log('[SERVER] Sample transaction ' + i + ' keys: ' + Object.keys(tx).join(', '));
-      Logger.log('[SERVER] Sample transaction ' + i + ' data: date=' + tx.date + ', type=' + tx.type + ', account=' + tx.account + ', amount=' + tx.amount);
-    }
-    
     var row = pfTransactionDTOToRow_(tx);
-    
-    if (i < 3) {
-      Logger.log('[SERVER] Sample row ' + i + ' length: ' + row.length + ', first 5 values: ' + row.slice(0, 5).join(', '));
-    }
     
     // Add error column
     var errorText = '';
@@ -447,17 +429,11 @@ function pfPreviewImport_(transactions) {
     rows.push(row);
   }
   
-  Logger.log('[SERVER] Prepared ' + rows.length + ' rows for writing');
-  Logger.log('[SERVER] Row length: ' + (rows.length > 0 ? rows[0].length : 0));
-  
   if (rows.length > 0) {
     try {
-      Logger.log('[SERVER] Writing to sheet: range=2,1,' + rows.length + ',' + rows[0].length);
       stagingSheet.getRange(2, 1, rows.length, rows[0].length).setValues(rows);
-      Logger.log('[SERVER] Successfully wrote ' + rows.length + ' rows to sheet');
     } catch (e) {
-      Logger.log('[SERVER] ERROR writing to sheet: ' + e.toString());
-      Logger.log('[SERVER] Error stack: ' + (e.stack || 'No stack'));
+      pfLogError_(e, 'pfPreviewImport_', PF_LOG_LEVEL.ERROR);
       throw e;
     }
     
@@ -470,7 +446,7 @@ function pfPreviewImport_(transactions) {
     for (var i = 0; i < rows.length; i++) {
       if (transactions[i].errors && transactions[i].errors.length > 0) {
         stagingSheet.getRange(i + 2, 1, 1, rows[0].length).setBackground('#FFE6E6');
-      } else if (transactions[i].status === 'duplicate') {
+      } else if (transactions[i].status === PF_TRANSACTION_STATUS.DUPLICATE) {
         stagingSheet.getRange(i + 2, 1, 1, rows[0].length).setBackground('#FFFFE6');
         // Add note with dedupe key for easy lookup
         var dedupeKeyCol = rows[0].length; // Last column
@@ -491,9 +467,9 @@ function pfPreviewImport_(transactions) {
   
   for (var i = 0; i < transactions.length; i++) {
     var tx = transactions[i];
-    if (tx.status === 'ok') stats.valid++;
-    else if (tx.status === 'needs_review') stats.needsReview++;
-    else if (tx.status === 'duplicate') stats.duplicates++;
+    if (tx.status === PF_TRANSACTION_STATUS.OK) stats.valid++;
+    else if (tx.status === PF_TRANSACTION_STATUS.NEEDS_REVIEW) stats.needsReview++;
+    else if (tx.status === PF_TRANSACTION_STATUS.DUPLICATE) stats.duplicates++;
   }
   
   return {
@@ -509,8 +485,6 @@ function pfPreviewImport_(transactions) {
  * @returns {Object} {found: boolean, rowNum: number, transaction: Object}
  */
 function pfFindDuplicateTransaction(dedupeKey) {
-  Logger.log('[SERVER] pfFindDuplicateTransaction called with key: ' + dedupeKey);
-  
   if (!dedupeKey || typeof dedupeKey !== 'string') {
     return { found: false, message: 'Неверный ключ дедупликации' };
   }
@@ -547,10 +521,7 @@ function pfFindDuplicateTransaction(dedupeKey) {
   var source = parts[0];
   var keySuffix = parts.slice(1).join(':'); // Everything after first ':'
   
-  Logger.log('[SERVER] Looking for source: ' + source + ', suffix: ' + keySuffix);
-  
   var checkedCount = 0;
-  var sampleKeys = [];
   
   for (var i = 0; i < data.length; i++) {
     var row = data[i];
@@ -574,10 +545,6 @@ function pfFindDuplicateTransaction(dedupeKey) {
       typeCol: typeCol
     });
     
-    if (checkedCount <= 5) {
-      sampleKeys.push('Row ' + (i + 2) + ': ' + rowKey);
-    }
-    
     if (rowKey === dedupeKey) {
       // Found it!
       var transaction = {
@@ -591,7 +558,6 @@ function pfFindDuplicateTransaction(dedupeKey) {
         sourceId: rowSourceId
       };
       
-      Logger.log('[SERVER] Found duplicate at row ' + (i + 2));
       return {
         found: true,
         rowNum: i + 2, // 1-based row number (header is row 1)
@@ -600,9 +566,6 @@ function pfFindDuplicateTransaction(dedupeKey) {
       };
     }
   }
-  
-  Logger.log('[SERVER] Duplicate not found. Checked ' + checkedCount + ' transactions with source "' + source + '"');
-  Logger.log('[SERVER] Sample keys from existing transactions: ' + sampleKeys.join('; '));
   
   return { 
     found: false, 
@@ -616,7 +579,6 @@ function pfFindDuplicateTransaction(dedupeKey) {
  * @returns {Object} Commit result
  */
 function pfCommitImport(includeNeedsReview) {
-  Logger.log('[SERVER] pfCommitImport (PUBLIC) called, includeNeedsReview: ' + includeNeedsReview);
   return pfCommitImport_(includeNeedsReview);
 }
 
@@ -626,32 +588,23 @@ function pfCommitImport(includeNeedsReview) {
  * @returns {Object} Commit result
  */
 function pfCommitImport_(includeNeedsReview) {
-  Logger.log('[SERVER] pfCommitImport_ called, includeNeedsReview: ' + includeNeedsReview);
-  
   includeNeedsReview = includeNeedsReview || false;
   
   try {
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     var stagingSheet = pfFindSheetByKey_(ss, PF_SHEET_KEYS.IMPORT_RAW);
     if (!stagingSheet || stagingSheet.getLastRow() <= 1) {
-      Logger.log('[SERVER] No staging data found');
-      return { success: false, message: 'Нет данных для импорта' };
+      return pfCreateErrorResponse_('Нет данных для импорта');
     }
-    
-    Logger.log('[SERVER] Staging sheet found, lastRow: ' + stagingSheet.getLastRow());
     
     var txSheet = pfFindOrCreateSheetByKey_(ss, PF_SHEET_KEYS.TRANSACTIONS);
     var numDataCols = PF_TRANSACTIONS_SCHEMA.columns.length;
     var lastStagingRow = stagingSheet.getLastRow();
     var data = stagingSheet.getRange(2, 1, lastStagingRow - 1, numDataCols).getValues();
     
-    Logger.log('[SERVER] Read ' + data.length + ' rows from staging sheet');
-    
     var statusColIdx = pfColumnIndex_(PF_TRANSACTIONS_SCHEMA, 'Status');
     var dateColIdx = pfColumnIndex_(PF_TRANSACTIONS_SCHEMA, 'Date');
     var errorCol = numDataCols + 1; // Error column is after transaction columns
-    
-    Logger.log('[SERVER] Status column index: ' + statusColIdx + ', Date column index: ' + dateColIdx + ', Error column: ' + errorCol);
     
     var rowsToAdd = [];
     var stats = {
@@ -660,13 +613,7 @@ function pfCommitImport_(includeNeedsReview) {
       needsReview: 0
     };
     
-    Logger.log('[SERVER] Processing ' + data.length + ' rows from staging sheet');
-    
     for (var i = 0; i < data.length; i++) {
-      if (i % 100 === 0 || i < 5) {
-        Logger.log('[SERVER] Processing row ' + (i + 2) + ' of ' + (data.length + 1));
-      }
-      
       var row = data[i];
       
       // Check status - normalize to string
@@ -677,28 +624,18 @@ function pfCommitImport_(includeNeedsReview) {
         var errorCellValue = stagingSheet.getRange(i + 2, errorCol).getValue();
         hasErrors = errorCellValue && String(errorCellValue).trim() !== '';
       } catch (e) {
-        Logger.log('[SERVER] WARNING: Could not read error cell for row ' + (i + 2) + ': ' + e.toString());
-      }
-      
-      if (i < 5) {
-        Logger.log('[SERVER] Row ' + (i + 2) + ': status=' + statusValue + ', hasErrors=' + hasErrors + ', date=' + (row[dateColIdx - 1] || '') + ', dateType=' + typeof row[dateColIdx - 1]);
+        pfLogWarning_('Could not read error cell for row ' + (i + 2) + ': ' + e.toString(), 'pfCommitImport_');
       }
       
       // Skip duplicates
       if (statusValue === PF_TRANSACTION_STATUS.DUPLICATE) {
         stats.skipped++;
-        if (i < 5) {
-          Logger.log('[SERVER] Skipping duplicate row ' + (i + 2));
-        }
         continue;
       }
       
       // Skip needs_review if not including
       if (statusValue === PF_TRANSACTION_STATUS.NEEDS_REVIEW && !includeNeedsReview) {
         stats.needsReview++;
-        if (i < 5) {
-          Logger.log('[SERVER] Skipping needs_review row ' + (i + 2) + ' (not including)');
-        }
         continue;
       }
       
@@ -717,11 +654,11 @@ function pfCommitImport_(includeNeedsReview) {
                 Logger.log('[SERVER] Converted date string to Date: ' + value + ' -> ' + dateObj.toISOString());
               }
             } else {
-              Logger.log('[SERVER] WARNING: Invalid date string in row ' + (i + 2) + ': ' + value);
+              pfLogWarning_('Invalid date string in row ' + (i + 2) + ': ' + value, 'pfCommitImport_');
               processedRow.push(value); // Keep as string if can't parse
             }
           } catch (e) {
-            Logger.log('[SERVER] WARNING: Error parsing date in row ' + (i + 2) + ': ' + e.toString());
+            pfLogWarning_('Error parsing date in row ' + (i + 2) + ': ' + e.toString(), 'pfCommitImport_');
             processedRow.push(value);
           }
         } else {
@@ -743,7 +680,7 @@ function pfCommitImport_(includeNeedsReview) {
       Logger.log('[SERVER] Row width: ' + rowsToAdd[0].length + ' columns');
       
       if (rowsToAdd[0].length !== numDataCols) {
-        Logger.log('[SERVER] WARNING: Row width mismatch! Expected ' + numDataCols + ', got ' + rowsToAdd[0].length);
+        pfLogWarning_('Row width mismatch! Expected ' + numDataCols + ', got ' + rowsToAdd[0].length, 'pfCommitImport_');
       }
       
       try {
@@ -773,14 +710,10 @@ function pfCommitImport_(includeNeedsReview) {
           Logger.log('[SERVER] Data is already normalized from parsing. Validation will occur via onEdit trigger when rows are edited.');
         }
       } catch (e) {
-        Logger.log('[SERVER] ERROR writing to Transactions sheet: ' + e.toString());
-        Logger.log('[SERVER] Error stack: ' + (e.stack || 'No stack'));
-        Logger.log('[SERVER] Rows to add length: ' + rowsToAdd.length);
-        Logger.log('[SERVER] First row sample: ' + JSON.stringify(rowsToAdd[0] ? rowsToAdd[0].slice(0, 5) : 'null'));
-        throw new Error('Ошибка при записи транзакций: ' + e.toString());
+        pfLogError_(e, 'pfCommitImport_', PF_LOG_LEVEL.ERROR);
+        pfLogWarning_('Rows to add length: ' + rowsToAdd.length, 'pfCommitImport_');
+        throw new Error('Ошибка при записи транзакций: ' + (e.message || e.toString()));
       }
-    } else {
-      Logger.log('[SERVER] No rows to add');
     }
     
     // Clear staging sheet safely (content, formatting, and notes)
@@ -788,25 +721,17 @@ function pfCommitImport_(includeNeedsReview) {
     if (stagingLastRow > 1) {
       var rowsToDelete = stagingLastRow - 1;
       if (rowsToDelete > 0) {
-        Logger.log('[SERVER] Clearing staging sheet: ' + rowsToDelete + ' rows');
         pfClearSheetRows_(stagingSheet, 2, rowsToDelete);
       }
     }
     
-    Logger.log('[SERVER] pfCommitImport_ completed successfully');
-    return {
-      success: true,
-      stats: stats,
-      message: 'Импортировано: ' + stats.added + ' транзакций. Пропущено: ' + stats.skipped + '. На проверку: ' + stats.needsReview
-    };
+    return pfCreateSuccessResponse_(
+      'Импортировано: ' + stats.added + ' транзакций. Пропущено: ' + stats.skipped + '. На проверку: ' + stats.needsReview,
+      { stats: stats }
+    );
     
   } catch (e) {
-    Logger.log('[SERVER] FATAL ERROR in pfCommitImport_: ' + e.toString());
-    Logger.log('[SERVER] Error stack: ' + (e.stack || 'No stack'));
-    return {
-      success: false,
-      message: 'Ошибка при импорте: ' + (e.message || e.toString())
-    };
+    return pfHandleError_(e, 'pfCommitImport_', 'Ошибка при импорте');
   }
 }
 
@@ -908,16 +833,16 @@ function pfProcessDataBatch(rawDataJson, importerType, options, batchSize, start
   try {
     // Валидация входных данных
     if (!rawDataJson || typeof rawDataJson !== 'string') {
-      Logger.log('[SERVER] ERROR: rawDataJson validation failed');
+      pfLogError_('rawDataJson validation failed', 'pfProcessDataBatch', PF_LOG_LEVEL.ERROR);
       throw new Error('rawDataJson must be a non-empty string');
     }
     if (!importerType || !['sberbank', 'csv'].includes(importerType)) {
-      Logger.log('[SERVER] ERROR: Invalid importerType: ' + importerType);
+      pfLogError_('Invalid importerType: ' + importerType, 'pfProcessDataBatch', PF_LOG_LEVEL.ERROR);
       throw new Error('Invalid importerType: ' + importerType);
     }
     batchSize = batchSize || 100;
     if (batchSize < 1 || batchSize > 1000) {
-      Logger.log('[SERVER] ERROR: Invalid batchSize: ' + batchSize);
+      pfLogError_('Invalid batchSize: ' + batchSize, 'pfProcessDataBatch', PF_LOG_LEVEL.ERROR);
       throw new Error('batchSize must be between 1 and 1000');
     }
     startIndex = startIndex || 0;
@@ -933,12 +858,12 @@ function pfProcessDataBatch(rawDataJson, importerType, options, batchSize, start
       rawData = JSON.parse(rawDataJson);
       Logger.log('[SERVER] JSON parsed successfully, array length: ' + rawData.length);
     } catch (e) {
-      Logger.log('[SERVER] ERROR: JSON parse failed: ' + e.toString());
+      pfLogError_(e, 'pfProcessDataBatch', PF_LOG_LEVEL.ERROR);
       throw new Error('Invalid JSON in rawDataJson: ' + e.toString());
     }
     
     if (!Array.isArray(rawData)) {
-      Logger.log('[SERVER] ERROR: rawData is not an array');
+      pfLogError_('rawData is not an array', 'pfProcessDataBatch', PF_LOG_LEVEL.ERROR);
       throw new Error('rawData must be an array');
     }
     
@@ -952,12 +877,12 @@ function pfProcessDataBatch(rawDataJson, importerType, options, batchSize, start
       importer = PF_CSV_IMPORTER;
       Logger.log('[SERVER] Using CSV importer');
     } else {
-      Logger.log('[SERVER] ERROR: Unknown importer type');
+      pfLogError_('Unknown importer type', 'pfProcessDataBatch', PF_LOG_LEVEL.ERROR);
       throw new Error('Неизвестный тип импортера: ' + importerType);
     }
     
     if (!importer) {
-      Logger.log('[SERVER] ERROR: Importer is null/undefined');
+      pfLogError_('Importer is null/undefined', 'pfProcessDataBatch', PF_LOG_LEVEL.ERROR);
       throw new Error('Importer not found');
     }
     
@@ -1019,8 +944,7 @@ function pfProcessDataBatch(rawDataJson, importerType, options, batchSize, start
         
         transactions.push(transaction);
       } catch (e) {
-        Logger.log('[SERVER] ERROR processing item ' + i + ': ' + e.toString());
-        Logger.log('[SERVER] Error stack: ' + (e.stack || 'No stack'));
+        pfLogError_(e, 'pfProcessDataBatch', PF_LOG_LEVEL.ERROR);
         stats.errors++;
         transactions.push({
           date: new Date().toISOString(), // Use ISO string instead of Date object
@@ -1036,25 +960,10 @@ function pfProcessDataBatch(rawDataJson, importerType, options, batchSize, start
       }
     }
     
-    var processDuration = new Date().getTime() - processStartTime;
-    Logger.log('[SERVER] Processing completed in ' + processDuration + 'ms');
-    Logger.log('[SERVER] Results: transactions=' + transactions.length + ', stats=' + JSON.stringify(stats));
-    
     // Calculate processed count (startIndex + batch length)
     var processed = (options._startIndex || startIndex) + rawData.length;
     var totalCount = options._totalCount || rawData.length;
     
-    Logger.log('[SERVER] Calculated: processed=' + processed + ', totalCount=' + totalCount + ', hasMore=' + (processed < totalCount));
-    Logger.log('[SERVER] Preparing result object...');
-    Logger.log('[SERVER] Result size check: transactions=' + transactions.length + ', existingKeys=' + Object.keys(existingKeys).length);
-    
-    // Check if result might be too large for google.script.run
-    // Try to estimate size (rough approximation)
-    var estimatedSize = JSON.stringify(transactions).length;
-    Logger.log('[SERVER] Estimated transactions JSON size: ' + estimatedSize + ' bytes');
-    
-    // If result is too large, we might need to split it
-    // But first, let's try to return it and see if it works
     var result = {
       transactions: transactions,
       stats: stats,
@@ -1066,21 +975,16 @@ function pfProcessDataBatch(rawDataJson, importerType, options, batchSize, start
     
     // Try to serialize to check if there are any issues
     try {
-      var testSerialization = JSON.stringify(result);
-      Logger.log('[SERVER] Result serialization test: SUCCESS, size: ' + testSerialization.length + ' bytes');
+      JSON.stringify(result);
     } catch (e) {
-      Logger.log('[SERVER] ERROR: Result serialization failed: ' + e.toString());
+      pfLogError_(e, 'pfProcessDataBatch', PF_LOG_LEVEL.ERROR);
       throw new Error('Failed to serialize result: ' + e.toString());
     }
-    
-    Logger.log('[SERVER] Returning result...');
-    Logger.log('[SERVER] pfProcessDataBatch completed successfully');
     
     return result;
     
   } catch (e) {
-    Logger.log('[SERVER] FATAL ERROR in pfProcessDataBatch: ' + e.toString());
-    Logger.log('[SERVER] Error stack: ' + (e.stack || 'No stack'));
+    pfLogError_(e, 'pfProcessDataBatch', PF_LOG_LEVEL.ERROR);
     throw e;
   }
 }
@@ -1189,7 +1093,6 @@ function pfProcessFileImport_(fileContent, options) {
  * @returns {Object} Map of dedupeKey -> true
  */
 function pfGetExistingTransactionKeys() {
-  Logger.log('[SERVER] pfGetExistingTransactionKeys called at ' + new Date().toISOString());
   try {
     var keys = pfGetExistingTransactionKeys_();
     Logger.log('[SERVER] pfGetExistingTransactionKeys completed, keys count: ' + Object.keys(keys).length);
@@ -1207,7 +1110,6 @@ function pfGetExistingTransactionKeys() {
  * @returns {Array<string>}
  */
 function pfGetAccountsList() {
-  Logger.log('[SERVER] pfGetAccountsList called');
   try {
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     var accountsSheet = pfFindSheetByKey_(ss, PF_SHEET_KEYS.ACCOUNTS);
@@ -1243,11 +1145,9 @@ function pfGetAccountsList() {
       Logger.log('[SERVER] Account column not found in schema');
     }
     
-    Logger.log('[SERVER] pfGetAccountsList returning ' + accounts.length + ' accounts: ' + accounts.join(', '));
     return accounts;
   } catch (e) {
-    Logger.log('[SERVER] ERROR in pfGetAccountsList: ' + e.toString());
-    Logger.log('[SERVER] Error stack: ' + (e.stack || 'No stack'));
+    pfLogError_(e, 'pfGetAccountsList', PF_LOG_LEVEL.ERROR);
     return [];
   }
 }
