@@ -455,35 +455,65 @@ function pfCommitImport_(includeNeedsReview) {
 function pfProcessFileImport_(fileContent, options) {
   options = options || {};
   
-  // Detect and use appropriate importer
-  // Try Sberbank first (more specific), then generic CSV
-  var importer = null;
-  
-  if (typeof PF_SBERBANK_IMPORTER !== 'undefined' && PF_SBERBANK_IMPORTER.detect(fileContent)) {
-    importer = PF_SBERBANK_IMPORTER;
-  } else if (PF_CSV_IMPORTER.detect(fileContent)) {
-    importer = PF_CSV_IMPORTER;
-  } else {
-    throw new Error('Формат файла не поддерживается. Используйте CSV файл или выписку Сбербанка.');
+  try {
+    // Detect and use appropriate importer
+    // Try Sberbank first (more specific), then generic CSV
+    var importer = null;
+    
+    if (typeof PF_SBERBANK_IMPORTER !== 'undefined' && PF_SBERBANK_IMPORTER.detect(fileContent)) {
+      importer = PF_SBERBANK_IMPORTER;
+    } else if (PF_CSV_IMPORTER.detect(fileContent)) {
+      importer = PF_CSV_IMPORTER;
+    } else {
+      throw new Error('Формат файла не поддерживается. Используйте CSV файл или выписку Сбербанка.');
+    }
+    
+    // Parse (this can take time for large files)
+    var rawData = [];
+    try {
+      rawData = importer.parse(fileContent, options);
+    } catch (parseError) {
+      throw new Error('Ошибка при парсинге файла: ' + (parseError.message || parseError.toString()));
+    }
+    
+    if (rawData.length === 0) {
+      throw new Error('Файл пуст или не содержит данных для импорта');
+    }
+    
+    // Process (this can also take time)
+    var result = null;
+    try {
+      var sourceName = importer === PF_SBERBANK_IMPORTER ? 'import:sberbank' : 'import:csv';
+      result = pfProcessImportData_(rawData, importer, {
+        source: sourceName,
+        defaultAccount: options.defaultAccount,
+        defaultCurrency: options.defaultCurrency
+      });
+    } catch (processError) {
+      throw new Error('Ошибка при обработке данных: ' + (processError.message || processError.toString()));
+    }
+    
+    if (!result || !result.transactions || result.transactions.length === 0) {
+      throw new Error('Не удалось обработать транзакции из файла');
+    }
+    
+    // Preview (this writes to sheet, can take time)
+    var preview = null;
+    try {
+      preview = pfPreviewImport_(result.transactions);
+    } catch (previewError) {
+      throw new Error('Ошибка при создании предпросмотра: ' + (previewError.message || previewError.toString()));
+    }
+    
+    return preview;
+  } catch (error) {
+    // Re-throw with more context
+    var errorMessage = error.message || error.toString();
+    if (errorMessage.indexOf('timeout') !== -1 || errorMessage.indexOf('exceeded') !== -1) {
+      throw new Error('Файл слишком большой или обработка заняла слишком много времени. Попробуйте разбить файл на части или уменьшить количество транзакций.');
+    }
+    throw error;
   }
-  
-  // Parse
-  var rawData = importer.parse(fileContent, options);
-  if (rawData.length === 0) {
-    throw new Error('Файл пуст или не содержит данных');
-  }
-  
-  // Process
-  var result = pfProcessImportData_(rawData, importer, {
-    source: 'import:csv',
-    defaultAccount: options.defaultAccount,
-    defaultCurrency: options.defaultCurrency
-  });
-  
-  // Preview
-  var preview = pfPreviewImport_(result.transactions);
-  
-  return preview;
 }
 
 /**
