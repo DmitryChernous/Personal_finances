@@ -363,6 +363,7 @@ function pfInitializeReports_(ss) {
         balanceRow++;
         accountCount++;
       }
+      } // Close if (accountNameColIdx && initialBalanceColIdx)
     }
   }
 
