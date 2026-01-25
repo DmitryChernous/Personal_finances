@@ -67,6 +67,9 @@ function pfInitializeReports_(ss) {
     reportsSheet.getRange(row + 1, 2).setValue('Income');
     reportsSheet.getRange(row + 1, 3).setValue('Expenses');
     reportsSheet.getRange(row + 1, 4).setValue('Net');
+    reportsSheet.getRange(row + 1, 5).setValue('Previous Month');
+    reportsSheet.getRange(row + 1, 6).setValue('Change');
+    reportsSheet.getRange(row + 1, 7).setValue('Change %');
     reportsSheet.getRange(row + 2, 1).setValue('Current Year');
     reportsSheet.getRange(row + 2, 2).setValue('Income');
     reportsSheet.getRange(row + 2, 3).setValue('Expenses');
@@ -77,6 +80,9 @@ function pfInitializeReports_(ss) {
     reportsSheet.getRange(row + 1, 2).setValue('Доходы');
     reportsSheet.getRange(row + 1, 3).setValue('Расходы');
     reportsSheet.getRange(row + 1, 4).setValue('Итого');
+    reportsSheet.getRange(row + 1, 5).setValue('Предыдущий месяц');
+    reportsSheet.getRange(row + 1, 6).setValue('Изменение');
+    reportsSheet.getRange(row + 1, 7).setValue('Изменение %');
     reportsSheet.getRange(row + 2, 1).setValue('Текущий год');
     reportsSheet.getRange(row + 2, 2).setValue('Доходы');
     reportsSheet.getRange(row + 2, 3).setValue('Расходы');
@@ -99,6 +105,70 @@ function pfInitializeReports_(ss) {
     reportsSheet.getRange(row + 1, 2).setFormula(monthIncomeFormula);
     reportsSheet.getRange(row + 1, 3).setFormula(monthExpenseFormula);
     reportsSheet.getRange(row + 1, 4).setFormula(monthNetFormula);
+
+    // Formulas for previous month (for comparison) - show net only for simplicity
+    var prevMonthStart = 'DATE(YEAR(TODAY());MONTH(TODAY())-1;1)';
+    var prevMonthEnd = 'EOMONTH(TODAY();-1)';
+    
+    var prevMonthIncomeFormula = '=SUMIFS(\'' + txSheetName + '\'!' + amountCol + '2:' + amountCol + ';\'' + txSheetName + '\'!' + typeCol + '2:' + typeCol + ';"income";\'' + txSheetName + '\'!' + statusCol + '2:' + statusCol + ';"ok";\'' + txSheetName + '\'!' + dateCol + '2:' + dateCol + ';">="&' + prevMonthStart + ';\'' + txSheetName + '\'!' + dateCol + '2:' + dateCol + ';"<="&' + prevMonthEnd + ')';
+    var prevMonthExpenseFormula = '=SUMIFS(\'' + txSheetName + '\'!' + amountCol + '2:' + amountCol + ';\'' + txSheetName + '\'!' + typeCol + '2:' + typeCol + ';"expense";\'' + txSheetName + '\'!' + statusCol + '2:' + statusCol + ';"ok";\'' + txSheetName + '\'!' + dateCol + '2:' + dateCol + ';">="&' + prevMonthStart + ';\'' + txSheetName + '\'!' + dateCol + '2:' + dateCol + ';"<="&' + prevMonthEnd + ')';
+    
+    // Previous month net = previous income - previous expense (column 5)
+    // Calculate directly as difference of two SUMIFS
+    var prevMonthNetCell = reportsSheet.getRange(row + 1, 5);
+    var prevMonthNetFormula = '=(' + prevMonthIncomeFormula.substring(1) + ')-(' + prevMonthExpenseFormula.substring(1) + ')';
+    prevMonthNetCell.setFormula(prevMonthNetFormula);
+    
+    // Change = current net - previous net (column 6)
+    var currentNetCell = reportsSheet.getRange(row + 1, 4);
+    var changeFormula = '=' + currentNetCell.getA1Notation() + '-' + prevMonthNetCell.getA1Notation();
+    var changeCell = reportsSheet.getRange(row + 1, 6);
+    changeCell.setFormula(changeFormula);
+    
+    // Change % = (change / previous) * 100, with check for division by zero (column 7)
+    var changePercentFormula = '=IF(' + prevMonthNetCell.getA1Notation() + '=0;0;(' + changeCell.getA1Notation() + '/' + prevMonthNetCell.getA1Notation() + ')*100)';
+    var changePercentCell = reportsSheet.getRange(row + 1, 7);
+    changePercentCell.setFormula(changePercentFormula);
+    
+    // Format previous month, change, change% columns
+    prevMonthNetCell.setNumberFormat('#,##0.00');
+    changeCell.setNumberFormat('#,##0.00');
+    changePercentCell.setNumberFormat('0.00%');
+    
+    // Conditional formatting for change: green if positive (net improved), red if negative
+    var rules = reportsSheet.getConditionalFormatRules();
+    
+    // Green if change > 0 (net improved)
+    var greenRule = SpreadsheetApp.newConditionalFormatRule()
+      .setRanges([changeCell])
+      .whenNumberGreaterThan(0)
+      .setBackground('#d9ead3') // Light green
+      .build();
+    
+    // Red if change < 0 (net worsened)
+    var redRule = SpreadsheetApp.newConditionalFormatRule()
+      .setRanges([changeCell])
+      .whenNumberLessThan(0)
+      .setBackground('#f4cccc') // Light red
+      .build();
+    
+    rules.push(greenRule, redRule);
+    
+    // Same for change%
+    var greenPercentRule = SpreadsheetApp.newConditionalFormatRule()
+      .setRanges([changePercentCell])
+      .whenNumberGreaterThan(0)
+      .setBackground('#d9ead3')
+      .build();
+    
+    var redPercentRule = SpreadsheetApp.newConditionalFormatRule()
+      .setRanges([changePercentCell])
+      .whenNumberLessThan(0)
+      .setBackground('#f4cccc')
+      .build();
+    
+    rules.push(greenPercentRule, redPercentRule);
+    reportsSheet.setConditionalFormatRules(rules);
 
     // Formulas for current year.
     var yearStart = 'DATE(YEAR(TODAY());1;1)';
@@ -436,7 +506,231 @@ function pfInitializeReports_(ss) {
     row += 3; // Minimal space if no budgets sheet
   }
 
-  // Section 5: Account balances (if we track balances).
+  // Section 5: Average values.
+  if (lang === 'en') {
+    reportsSheet.getRange(row, 1).setValue('Average Values');
+    reportsSheet.getRange(row + 1, 1).setValue('Metric');
+    reportsSheet.getRange(row + 1, 2).setValue('Value');
+  } else {
+    reportsSheet.getRange(row, 1).setValue('Средние значения');
+    reportsSheet.getRange(row + 1, 1).setValue('Показатель');
+    reportsSheet.getRange(row + 1, 2).setValue('Значение');
+  }
+
+  // Calculate average values using script-based calculation.
+  var txSheet = pfFindSheetByKey_(ss, PF_SHEET_KEYS.TRANSACTIONS);
+  if (txSheet) {
+    var lastRow = txSheet.getLastRow();
+    if (lastRow > 1) {
+      var today = new Date();
+      var currentMonthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+      var currentMonthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+      var daysInMonth = currentMonthEnd.getDate();
+      
+      var data = txSheet.getRange(2, 1, lastRow - 1, PF_TRANSACTIONS_SCHEMA.columns.length).getValues();
+      
+      var amountColIdx = pfColumnIndex_(PF_TRANSACTIONS_SCHEMA, 'Amount');
+      var typeColIdx = pfColumnIndex_(PF_TRANSACTIONS_SCHEMA, 'Type');
+      var statusColIdx = pfColumnIndex_(PF_TRANSACTIONS_SCHEMA, 'Status');
+      var dateColIdx = pfColumnIndex_(PF_TRANSACTIONS_SCHEMA, 'Date');
+      
+      if (amountColIdx && typeColIdx && statusColIdx && dateColIdx) {
+        var amountIdx = amountColIdx - 1;
+        var typeIdx = typeColIdx - 1;
+        var statusIdx = statusColIdx - 1;
+        var dateIdx = dateColIdx - 1;
+        
+        // Calculate current month expenses
+        var currentMonthExpenses = 0;
+        for (var i = 0; i < data.length; i++) {
+          var rowData = data[i];
+          if (rowData.length <= amountIdx || rowData.length <= typeIdx || 
+              rowData.length <= statusIdx || rowData.length <= dateIdx) {
+            continue;
+          }
+          var date = rowData[dateIdx];
+          var type = rowData[typeIdx];
+          var status = rowData[statusIdx];
+          var amount = rowData[amountIdx];
+          if (date && date >= currentMonthStart && date <= currentMonthEnd && 
+              type === PF_TRANSACTION_TYPE.EXPENSE && status === PF_TRANSACTION_STATUS.OK) {
+            currentMonthExpenses += Number(amount) || 0;
+          }
+        }
+        
+        // Average daily expense (current month)
+        var avgDailyExpense = currentMonthExpenses / daysInMonth;
+        
+        // Calculate average monthly expense/income for last 3, 6, 12 months
+        var monthlyExpenses = [];
+        var monthlyIncomes = [];
+        
+        for (var monthOffset = 11; monthOffset >= 0; monthOffset--) {
+          var targetDate = new Date(today.getFullYear(), today.getMonth() - monthOffset, 1);
+          var monthStart = new Date(targetDate.getFullYear(), targetDate.getMonth(), 1);
+          var monthEnd = new Date(targetDate.getFullYear(), targetDate.getMonth() + 1, 0);
+          
+          var monthExpense = 0;
+          var monthIncome = 0;
+          
+          for (var j = 0; j < data.length; j++) {
+            var rowData = data[j];
+            if (rowData.length <= amountIdx || rowData.length <= typeIdx || 
+                rowData.length <= statusIdx || rowData.length <= dateIdx) {
+              continue;
+            }
+            var date = rowData[dateIdx];
+            var type = rowData[typeIdx];
+            var status = rowData[statusIdx];
+            var amount = rowData[amountIdx];
+            if (date && date >= monthStart && date <= monthEnd && 
+                status === PF_TRANSACTION_STATUS.OK && type !== PF_TRANSACTION_TYPE.TRANSFER) {
+              if (type === PF_TRANSACTION_TYPE.EXPENSE) {
+                monthExpense += Number(amount) || 0;
+              } else if (type === PF_TRANSACTION_TYPE.INCOME) {
+                monthIncome += Number(amount) || 0;
+              }
+            }
+          }
+          
+          monthlyExpenses.push(monthExpense);
+          monthlyIncomes.push(monthIncome);
+        }
+        
+        // Calculate averages
+        var avgExpense3Months = monthlyExpenses.slice(-3).reduce(function(a, b) { return a + b; }, 0) / 3;
+        var avgExpense6Months = monthlyExpenses.slice(-6).reduce(function(a, b) { return a + b; }, 0) / 6;
+        var avgExpense12Months = monthlyExpenses.reduce(function(a, b) { return a + b; }, 0) / 12;
+        
+        var avgIncome3Months = monthlyIncomes.slice(-3).reduce(function(a, b) { return a + b; }, 0) / 3;
+        var avgIncome6Months = monthlyIncomes.slice(-6).reduce(function(a, b) { return a + b; }, 0) / 6;
+        var avgIncome12Months = monthlyIncomes.reduce(function(a, b) { return a + b; }, 0) / 12;
+        
+        // Write average values
+        var avgData = [];
+        if (lang === 'en') {
+          avgData.push(['Avg Daily Expense (Current Month)', avgDailyExpense]);
+          avgData.push(['Avg Monthly Expense (Last 3 Months)', avgExpense3Months]);
+          avgData.push(['Avg Monthly Expense (Last 6 Months)', avgExpense6Months]);
+          avgData.push(['Avg Monthly Expense (Last 12 Months)', avgExpense12Months]);
+          avgData.push(['Avg Monthly Income (Last 3 Months)', avgIncome3Months]);
+          avgData.push(['Avg Monthly Income (Last 6 Months)', avgIncome6Months]);
+          avgData.push(['Avg Monthly Income (Last 12 Months)', avgIncome12Months]);
+        } else {
+          avgData.push(['Средний расход в день (текущий месяц)', avgDailyExpense]);
+          avgData.push(['Средний расход в месяц (последние 3 месяца)', avgExpense3Months]);
+          avgData.push(['Средний расход в месяц (последние 6 месяцев)', avgExpense6Months]);
+          avgData.push(['Средний расход в месяц (последние 12 месяцев)', avgExpense12Months]);
+          avgData.push(['Средний доход в месяц (последние 3 месяца)', avgIncome3Months]);
+          avgData.push(['Средний доход в месяц (последние 6 месяцев)', avgIncome6Months]);
+          avgData.push(['Средний доход в месяц (последние 12 месяцев)', avgIncome12Months]);
+        }
+        
+        if (avgData.length > 0) {
+          reportsSheet.getRange(row + 2, 1, avgData.length, 2).setValues(avgData);
+          reportsSheet.getRange(row + 2, 2, avgData.length, 1).setNumberFormat('#,##0.00');
+        }
+      }
+    }
+  }
+
+  row += 10; // Leave space for average values + header.
+
+  // Section 6: Forecast for next month.
+  if (lang === 'en') {
+    reportsSheet.getRange(row, 1).setValue('Forecast (Next Month)');
+    reportsSheet.getRange(row + 1, 1).setValue('Type');
+    reportsSheet.getRange(row + 1, 2).setValue('Forecast');
+  } else {
+    reportsSheet.getRange(row, 1).setValue('Прогноз (следующий месяц)');
+    reportsSheet.getRange(row + 1, 1).setValue('Тип');
+    reportsSheet.getRange(row + 1, 2).setValue('Прогноз');
+  }
+
+  // Calculate forecast using average of last 3 months.
+  if (txSheet) {
+    var lastRow = txSheet.getLastRow();
+    if (lastRow > 1) {
+      var today = new Date();
+      var data = txSheet.getRange(2, 1, lastRow - 1, PF_TRANSACTIONS_SCHEMA.columns.length).getValues();
+      
+      var amountColIdx = pfColumnIndex_(PF_TRANSACTIONS_SCHEMA, 'Amount');
+      var typeColIdx = pfColumnIndex_(PF_TRANSACTIONS_SCHEMA, 'Type');
+      var statusColIdx = pfColumnIndex_(PF_TRANSACTIONS_SCHEMA, 'Status');
+      var dateColIdx = pfColumnIndex_(PF_TRANSACTIONS_SCHEMA, 'Date');
+      
+      if (amountColIdx && typeColIdx && statusColIdx && dateColIdx) {
+        var amountIdx = amountColIdx - 1;
+        var typeIdx = typeColIdx - 1;
+        var statusIdx = statusColIdx - 1;
+        var dateIdx = dateColIdx - 1;
+        
+        // Get last 3 months data
+        var monthlyExpenses = [];
+        var monthlyIncomes = [];
+        
+        for (var monthOffset = 2; monthOffset >= 0; monthOffset--) {
+          var targetDate = new Date(today.getFullYear(), today.getMonth() - monthOffset, 1);
+          var monthStart = new Date(targetDate.getFullYear(), targetDate.getMonth(), 1);
+          var monthEnd = new Date(targetDate.getFullYear(), targetDate.getMonth() + 1, 0);
+          
+          var monthExpense = 0;
+          var monthIncome = 0;
+          
+          for (var i = 0; i < data.length; i++) {
+            var rowData = data[i];
+            if (rowData.length <= amountIdx || rowData.length <= typeIdx || 
+                rowData.length <= statusIdx || rowData.length <= dateIdx) {
+              continue;
+            }
+            var date = rowData[dateIdx];
+            var type = rowData[typeIdx];
+            var status = rowData[statusIdx];
+            var amount = rowData[amountIdx];
+            if (date && date >= monthStart && date <= monthEnd && 
+                status === PF_TRANSACTION_STATUS.OK && type !== PF_TRANSACTION_TYPE.TRANSFER) {
+              if (type === PF_TRANSACTION_TYPE.EXPENSE) {
+                monthExpense += Number(amount) || 0;
+              } else if (type === PF_TRANSACTION_TYPE.INCOME) {
+                monthIncome += Number(amount) || 0;
+              }
+            }
+          }
+          
+          monthlyExpenses.push(monthExpense);
+          monthlyIncomes.push(monthIncome);
+        }
+        
+        // Forecast = average of last 3 months
+        var forecastExpense = monthlyExpenses.length > 0 ? 
+          monthlyExpenses.reduce(function(a, b) { return a + b; }, 0) / monthlyExpenses.length : 0;
+        var forecastIncome = monthlyIncomes.length > 0 ? 
+          monthlyIncomes.reduce(function(a, b) { return a + b; }, 0) / monthlyIncomes.length : 0;
+        var forecastNet = forecastIncome - forecastExpense;
+        
+        // Write forecast data
+        var forecastData = [];
+        if (lang === 'en') {
+          forecastData.push(['Expenses', forecastExpense]);
+          forecastData.push(['Income', forecastIncome]);
+          forecastData.push(['Net', forecastNet]);
+        } else {
+          forecastData.push(['Расходы', forecastExpense]);
+          forecastData.push(['Доходы', forecastIncome]);
+          forecastData.push(['Итого', forecastNet]);
+        }
+        
+        if (forecastData.length > 0) {
+          reportsSheet.getRange(row + 2, 1, forecastData.length, 2).setValues(forecastData);
+          reportsSheet.getRange(row + 2, 2, forecastData.length, 1).setNumberFormat('#,##0.00');
+        }
+      }
+    }
+  }
+
+  row += 6; // Leave space for forecast + header.
+
+  // Section 7: Account balances (if we track balances).
   if (lang === 'en') {
     reportsSheet.getRange(row, 1).setValue('Account Balances');
     reportsSheet.getRange(row + 1, 1).setValue('Account');
