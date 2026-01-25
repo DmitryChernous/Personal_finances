@@ -31,6 +31,7 @@ var PF_IMPORT_SOURCE = {
   MANUAL: 'manual',
   CSV: 'import:csv',
   SBERBANK: 'import:sberbank',
+  PDF: 'import:pdf',
   ERROR: 'import:error'
 };
 

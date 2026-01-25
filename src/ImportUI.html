@@ -80,13 +80,13 @@
   <h2>Импорт транзакций</h2>
   
   <div class="info">
-    Поддерживаемые форматы: CSV, Excel (через экспорт в CSV).<br>
-    PDF файлы: экспортируйте в CSV/Excel перед импортом.
+    Поддерживаемые форматы: CSV, Excel (через экспорт в CSV), PDF (выписки банков).<br>
+    PDF: поддерживаются выписки Сбербанка и Тинькофф (автоматическое распознавание).
   </div>
   
   <div class="section">
     <label for="fileInput">Выберите файл:</label>
-    <input type="file" id="fileInput" accept=".csv,.txt" style="width: 100%; margin-bottom: 5px;">
+    <input type="file" id="fileInput" accept=".csv,.txt,.pdf" style="width: 100%; margin-bottom: 5px;">
     <div id="fileInfo" style="font-size: 12px; color: #666; margin-top: 5px;"></div>
   </div>
   
@@ -134,6 +134,7 @@
   
   <script>
     var fileContent = null;
+    var fileName = null;
     var previewData = null;
     
     // Load accounts on page load
@@ -147,31 +148,60 @@
           document.getElementById('message').innerHTML = '<div>Загрузка файла...</div>';
           document.getElementById('previewBtn').disabled = true;
           
+          // Check if file is PDF
+          var isPdf = file.name.toLowerCase().endsWith('.pdf') || file.type === 'application/pdf';
+          
           var reader = new FileReader();
           reader.onload = function(e) {
             try {
-              fileContent = e.target.result;
-              if (fileContent && fileContent.length > 0) {
-                document.getElementById('fileInfo').textContent = 'Файл: ' + file.name + ' (' + fileContent.length + ' символов)';
-                document.getElementById('message').innerHTML = 
-                  '<div class="success">Файл загружен: ' + file.name + ' (' + fileContent.length + ' символов)</div>';
-                // Reset preview
-                previewData = null;
-                document.getElementById('previewBtn').disabled = false;
-                document.getElementById('commitBtn').disabled = true;
-                document.getElementById('commitWithReviewBtn').disabled = true;
-                document.getElementById('stats').style.display = 'none';
+              if (isPdf) {
+                // For PDF, read as base64
+                var base64 = e.target.result.split(',')[1]; // Remove data:application/pdf;base64, prefix
+                fileContent = base64;
+                fileName = file.name;
+                if (fileContent && fileContent.length > 0) {
+                  var sizeMB = (file.size / 1024 / 1024).toFixed(2);
+                  document.getElementById('fileInfo').textContent = 'Файл: ' + file.name + ' (' + sizeMB + ' MB, PDF)';
+                  document.getElementById('message').innerHTML = 
+                    '<div class="success">PDF файл загружен: ' + file.name + ' (' + sizeMB + ' MB)</div>';
+                } else {
+                  showError('PDF файл пуст или не удалось прочитать содержимое');
+                  document.getElementById('fileInfo').textContent = '';
+                  document.getElementById('previewBtn').disabled = true;
+                  fileContent = null;
+                  fileName = null;
+                  return;
+                }
               } else {
-                showError('Файл пуст или не удалось прочитать содержимое');
-                document.getElementById('fileInfo').textContent = '';
-                document.getElementById('previewBtn').disabled = true;
-                fileContent = null;
+                // For text files (CSV), read as text
+                fileContent = e.target.result;
+                fileName = file.name;
+                if (fileContent && fileContent.length > 0) {
+                  document.getElementById('fileInfo').textContent = 'Файл: ' + file.name + ' (' + fileContent.length + ' символов)';
+                  document.getElementById('message').innerHTML = 
+                    '<div class="success">Файл загружен: ' + file.name + ' (' + fileContent.length + ' символов)</div>';
+                } else {
+                  showError('Файл пуст или не удалось прочитать содержимое');
+                  document.getElementById('fileInfo').textContent = '';
+                  document.getElementById('previewBtn').disabled = true;
+                  fileContent = null;
+                  fileName = null;
+                  return;
+                }
               }
+              
+              // Reset preview
+              previewData = null;
+              document.getElementById('previewBtn').disabled = false;
+              document.getElementById('commitBtn').disabled = true;
+              document.getElementById('commitWithReviewBtn').disabled = true;
+              document.getElementById('stats').style.display = 'none';
             } catch (err) {
               showError('Ошибка при чтении файла: ' + err.message);
               document.getElementById('fileInfo').textContent = '';
               document.getElementById('previewBtn').disabled = true;
               fileContent = null;
+              fileName = null;
             }
           };
           reader.onerror = function(e) {
@@ -179,8 +209,14 @@
             document.getElementById('fileInfo').textContent = '';
             document.getElementById('previewBtn').disabled = true;
             fileContent = null;
+            fileName = null;
           };
-          reader.readAsText(file, 'UTF-8');
+          
+          if (isPdf) {
+            reader.readAsDataURL(file); // Read as base64 for PDF
+          } else {
+            reader.readAsText(file, 'UTF-8'); // Read as text for CSV
+          }
         } else {
           fileContent = null;
           document.getElementById('fileInfo').textContent = '';
@@ -424,46 +460,77 @@
         defaultCurrency: defaultCurrency
       };
       
-      // Step 1: Detect format (5%)
-      showProgress('Определение формата файла...', 5);
-      google.script.run
-        .withSuccessHandler(function(formatInfo) {
-          if (!formatInfo.detected) {
-            hideProgress();
-            showError('Формат файла не поддерживается. Используйте CSV файл или выписку Сбербанка.');
-            document.getElementById('previewBtn').disabled = false;
-            return;
-          }
-          
-          // Step 2: Parse file (5-30%)
-          updateProgress('Парсинг файла...', 10);
-          google.script.run
-            .withSuccessHandler(function(parseResult) {
-              if (parseResult.count === 0) {
-                hideProgress();
-                showError('Файл пуст или не содержит данных для импорта');
-                document.getElementById('previewBtn').disabled = false;
-                return;
-              }
-              
-              updateProgress('Найдено транзакций: ' + parseResult.count + '. Обработка данных...', 15);
-              
-              // Step 3: Process data in batches
-              processDataInBatches(parseResult.rawData, formatInfo.importerType, options, parseResult.count);
-            })
-            .withFailureHandler(function(error) {
+      // Check if file is PDF
+      var isPdf = fileName && fileName.toLowerCase().endsWith('.pdf');
+      
+      if (isPdf) {
+        // For PDF files, parse directly
+        showProgress('Обработка PDF файла...', 5);
+        updateProgress('Извлечение текста из PDF (может занять некоторое время)...', 10);
+        
+        google.script.run
+          .withSuccessHandler(function(parseResult) {
+            if (parseResult.count === 0) {
               hideProgress();
-              showError('Ошибка при парсинге файла: ' + (error.message || error.toString()));
+              showError('PDF файл не содержит транзакций или не удалось распознать банк. Поддерживаются выписки Сбербанка и Тинькофф.');
               document.getElementById('previewBtn').disabled = false;
-            })
-            .pfParseFileContent(fileContent, formatInfo.importerType, options);
-        })
-        .withFailureHandler(function(error) {
-          hideProgress();
-          showError('Ошибка при определении формата: ' + (error.message || error.toString()));
-          document.getElementById('previewBtn').disabled = false;
-        })
-        .pfDetectFileFormat(fileContent);
+              return;
+            }
+            
+            updateProgress('Найдено транзакций: ' + parseResult.count + '. Обработка данных...', 30);
+            
+            // Step 3: Process data in batches
+            processDataInBatches(parseResult.rawData, 'pdf', options, parseResult.count);
+          })
+          .withFailureHandler(function(error) {
+            hideProgress();
+            showError('Ошибка при обработке PDF: ' + (error.message || error.toString()) + '. Убедитесь, что файл является выпиской Сбербанка или Тинькофф.');
+            document.getElementById('previewBtn').disabled = false;
+          })
+          .pfParsePdfFile(fileContent, fileName, options);
+      } else {
+        // For text files (CSV), use existing flow
+        // Step 1: Detect format (5%)
+        showProgress('Определение формата файла...', 5);
+        google.script.run
+          .withSuccessHandler(function(formatInfo) {
+            if (!formatInfo.detected) {
+              hideProgress();
+              showError('Формат файла не поддерживается. Используйте CSV файл или выписку Сбербанка.');
+              document.getElementById('previewBtn').disabled = false;
+              return;
+            }
+            
+            // Step 2: Parse file (5-30%)
+            updateProgress('Парсинг файла...', 10);
+            google.script.run
+              .withSuccessHandler(function(parseResult) {
+                if (parseResult.count === 0) {
+                  hideProgress();
+                  showError('Файл пуст или не содержит данных для импорта');
+                  document.getElementById('previewBtn').disabled = false;
+                  return;
+                }
+                
+                updateProgress('Найдено транзакций: ' + parseResult.count + '. Обработка данных...', 15);
+                
+                // Step 3: Process data in batches
+                processDataInBatches(parseResult.rawData, formatInfo.importerType, options, parseResult.count);
+              })
+              .withFailureHandler(function(error) {
+                hideProgress();
+                showError('Ошибка при парсинге файла: ' + (error.message || error.toString()));
+                document.getElementById('previewBtn').disabled = false;
+              })
+              .pfParseFileContent(fileContent, formatInfo.importerType, options);
+          })
+          .withFailureHandler(function(error) {
+            hideProgress();
+            showError('Ошибка при определении формата: ' + (error.message || error.toString()));
+            document.getElementById('previewBtn').disabled = false;
+          })
+          .pfDetectFileFormat(fileContent);
+      }
     }
     
     /**

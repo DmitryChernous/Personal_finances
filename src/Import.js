@@ -715,6 +715,16 @@ function pfDetectFileFormat(fileContent) {
     throw new Error('File too large: ' + Math.round(fileContent.length / 1024 / 1024) + 'MB. Maximum is ' + Math.round(PF_IMPORT_MAX_FILE_SIZE / 1024 / 1024) + 'MB.');
   }
   
+  // Check for PDF first (by file extension or MIME type)
+  // Note: For PDF, we can't detect from content string alone, so we check fileName if available
+  // In UI, we'll pass fileName separately for PDF detection
+  
+  // Check for PDF (if fileName is provided)
+  if (typeof PF_PDF_IMPORTER !== 'undefined') {
+    // For PDF, detection is based on file name or MIME type, not content
+    // We'll handle PDF detection in the UI layer
+  }
+  
   // Ограничение размера для проверки (первые 100KB достаточно для определения формата)
   var checkContent = fileContent.length > 100000 ? fileContent.substring(0, 100000) : fileContent;
   
@@ -727,10 +737,56 @@ function pfDetectFileFormat(fileContent) {
 }
 
 /**
+ * Step 2a: Parse PDF file (special handling for PDF).
+ * Public function for HTML Service.
+ * @param {string} fileContent - PDF file content as base64 string
+ * @param {string} fileName - File name (for detection)
+ * @param {Object} options - Parse options
+ * @returns {Object} {rawData: Array, count: number, errors: Array}
+ */
+function pfParsePdfFile(fileContent, fileName, options) {
+  options = options || {};
+  
+  if (!fileContent || typeof fileContent !== 'string') {
+    throw new Error('fileContent must be a non-empty string (base64 encoded PDF)');
+  }
+  
+  if (typeof PF_PDF_IMPORTER === 'undefined') {
+    throw new Error('PDF importer is not available');
+  }
+  
+  // Check if it's a PDF
+  if (!PF_PDF_IMPORTER.detect(null, fileName)) {
+    throw new Error('File is not a PDF: ' + fileName);
+  }
+  
+  // Convert base64 to Blob
+  try {
+    var bytes = Utilities.base64Decode(fileContent);
+    var blob = Utilities.newBlob(bytes, 'application/pdf', fileName);
+    
+    // Parse PDF
+    var rawData = PF_PDF_IMPORTER.parse(blob, options);
+    
+    if (!Array.isArray(rawData)) {
+      throw new Error('PDF parser returned invalid data: expected array, got ' + typeof rawData);
+    }
+    
+    return {
+      rawData: rawData,
+      count: rawData.length,
+      errors: []
+    };
+  } catch (parseError) {
+    throw new Error('Error parsing PDF: ' + (parseError.message || parseError.toString()));
+  }
+}
+
+/**
  * Step 2: Parse file content.
  * Public function for HTML Service.
  * @param {string} fileContent - File content as string
- * @param {string} importerType - 'sberbank' or 'csv'
+ * @param {string} importerType - 'sberbank', 'csv', or 'pdf'
  * @param {Object} options - Parse options
  * @returns {Object} {rawData: Array, count: number, errors: Array}
  */
@@ -740,8 +796,8 @@ function pfParseFileContent(fileContent, importerType, options) {
     throw new Error('fileContent must be a non-empty string');
   }
   
-  if (!importerType || typeof importerType !== 'string' || !['sberbank', 'csv'].includes(importerType)) {
-    throw new Error('Invalid importerType: must be "sberbank" or "csv", got: ' + String(importerType));
+  if (!importerType || typeof importerType !== 'string' || !['sberbank', 'csv', 'pdf'].includes(importerType)) {
+    throw new Error('Invalid importerType: must be "sberbank", "csv", or "pdf", got: ' + String(importerType));
   }
   
   if (fileContent.length > PF_IMPORT_MAX_FILE_SIZE) {
@@ -750,13 +806,17 @@ function pfParseFileContent(fileContent, importerType, options) {
   
   options = options || {};
   
-  options = options || {};
   var importer = null;
   
   if (importerType === 'sberbank') {
     importer = PF_SBERBANK_IMPORTER;
   } else if (importerType === 'csv') {
     importer = PF_CSV_IMPORTER;
+  } else if (importerType === 'pdf') {
+    if (typeof PF_PDF_IMPORTER === 'undefined') {
+      throw new Error('PDF importer is not available');
+    }
+    importer = PF_PDF_IMPORTER;
   } else {
     throw new Error('Неизвестный тип импортера: ' + importerType);
   }
@@ -788,7 +848,7 @@ function pfParseFileContent(fileContent, importerType, options) {
  * Public function for HTML Service.
  * Note: rawData is passed as JSON string to avoid size limits.
  * @param {string} rawDataJson - Raw data as JSON string
- * @param {string} importerType - 'sberbank' or 'csv'
+ * @param {string} importerType - 'sberbank', 'csv', or 'pdf'
  * @param {Object} options - Processing options
  * @param {number} batchSize - Number of items to process per batch (default: 100)
  * @param {number} startIndex - Start index for this batch (default: 0)
@@ -854,6 +914,12 @@ function pfProcessDataBatch(rawDataJson, importerType, options, batchSize, start
     } else if (importerType === 'csv') {
       importer = PF_CSV_IMPORTER;
       Logger.log('[SERVER] Using CSV importer');
+    } else if (importerType === 'pdf') {
+      if (typeof PF_PDF_IMPORTER === 'undefined') {
+        throw new Error('PDF importer is not available');
+      }
+      importer = PF_PDF_IMPORTER;
+      Logger.log('[SERVER] Using PDF importer');
     } else {
       pfLogError_('Unknown importer type', 'pfProcessDataBatch', PF_LOG_LEVEL.ERROR);
       throw new Error('Неизвестный тип импортера: ' + importerType);
@@ -864,7 +930,8 @@ function pfProcessDataBatch(rawDataJson, importerType, options, batchSize, start
       throw new Error('Importer not found');
     }
     
-    var sourceName = importerType === 'sberbank' ? PF_IMPORT_SOURCE.SBERBANK : PF_IMPORT_SOURCE.CSV;
+    var sourceName = importerType === 'sberbank' ? PF_IMPORT_SOURCE.SBERBANK : 
+                     importerType === 'pdf' ? 'import:pdf' : PF_IMPORT_SOURCE.CSV;
     var transactions = [];
     var stats = {
       valid: 0,
