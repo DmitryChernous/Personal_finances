@@ -195,44 +195,72 @@ var PF_PDF_SBERBANK_PARSER = {
           var amountMatch = line.match(amountPattern);
           
           if (currentTransaction) {
-            if (dateMatch && !amountMatch) {
+            // Check if this line looks like a full transaction line (has date, time, code, amount)
+            // If so, it's likely a new transaction, not continuation
+            var looksLikeFullTransaction = dateMatch && 
+                                          line.match(/\d{2}:\d{2}/) && // Has time
+                                          line.match(/\d{6}/) && // Has auth code
+                                          amountMatch;
+            
+            if (looksLikeFullTransaction) {
+              // This looks like a new transaction line that didn't match the pattern
+              // Save current transaction and try to parse this as new
+              transactions.push(currentTransaction);
+              currentTransaction = null;
+              
+              // Try to extract what we can from this line
+              var dateStr2 = dateMatch[1];
+              var timeMatch = line.match(/(\d{2}:\d{2})/);
+              var authCodeMatch = line.match(/(\d{6})/);
+              var amountStr2 = amountMatch[1];
+              var amountValue2 = this._parseAmount_(amountStr2);
+              
+              // Extract category (text between auth code and amount)
+              var category = '';
+              if (authCodeMatch && amountMatch) {
+                var categoryStart = authCodeMatch.index + authCodeMatch[0].length;
+                var categoryEnd = amountMatch.index;
+                if (categoryEnd > categoryStart) {
+                  category = line.substring(categoryStart, categoryEnd).trim();
+                }
+              }
+              
+              // Determine type
+              var type2 = 'expense';
+              if (category.indexOf('+') !== -1) {
+                type2 = 'income';
+              }
+              
+              currentTransaction = {
+                bank: 'sberbank',
+                date: dateStr2,
+                time: timeMatch ? timeMatch[1] : '',
+                authCode: authCodeMatch ? authCodeMatch[1] : '',
+                category: category,
+                amount: amountValue2,
+                type: type2,
+                description: [], // Will collect description from next lines
+                rawLine: line
+              };
+            } else if (dateMatch && !amountMatch) {
               // Line with date but no amount - continuation of description
               // Remove date from beginning if present
               var descLine = line;
               if (dateMatch.index === 0) {
                 descLine = line.substring(dateMatch[0].length).trim();
               }
-              if (descLine && descLine.length > 0) {
+              // Skip lines that are just "по карте ****7426" or similar
+              if (descLine && descLine.length > 0 && 
+                  !descLine.match(/^(по карте|операция по карте|карте)\s*\*\*\*\*\d*$/i)) {
                 currentTransaction.description.push(descLine);
               }
             } else if (!dateMatch && !amountMatch) {
               // Line without date or amount - continuation of description
-              if (line.length > 0) {
+              // Skip lines that are just "по карте ****7426" or similar
+              if (line.length > 0 && 
+                  !line.match(/^(по карте|операция по карте|карте)\s*\*\*\*\*\d*$/i)) {
                 currentTransaction.description.push(line);
               }
-            } else if (dateMatch && amountMatch) {
-              // Has both date and amount but didn't match full pattern
-              // Might be a new transaction with different format
-              // Save current and try to parse this line as new transaction
-              transactions.push(currentTransaction);
-              currentTransaction = null;
-              
-              // Try to extract what we can
-              var dateStr2 = dateMatch[1];
-              var amountStr2 = amountMatch[1];
-              var amountValue2 = this._parseAmount_(amountStr2);
-              
-              currentTransaction = {
-                bank: 'sberbank',
-                date: dateStr2,
-                time: '',
-                authCode: '',
-                category: '',
-                amount: amountValue2,
-                type: 'expense',
-                description: [line],
-                rawLine: line
-              };
             }
           } else if (dateMatch && amountMatch) {
             // New transaction but format doesn't match full pattern
@@ -345,33 +373,62 @@ var PF_PDF_SBERBANK_PARSER = {
     // Extract merchant from description (usually first part before "RUS" or "Операция")
     var merchant = '';
     if (description) {
+      // First, check if description contains a full transaction line (date + time + code + amount)
+      // If so, extract merchant from the description part, not from the transaction line
+      var fullTxMatch = description.match(/(\d{2}\.\d{2}\.\d{4})\s+(\d{2}:\d{2})\s+(\d{6})\s+(.+?)\s+([\d\s]+,\d{2})/);
+      if (fullTxMatch) {
+        // Description contains a full transaction line - extract merchant from the part after it
+        var txLineEnd = fullTxMatch.index + fullTxMatch[0].length;
+        var descAfterTx = description.substring(txLineEnd).trim();
+        if (descAfterTx) {
+          description = descAfterTx; // Use only the part after transaction line
+        } else {
+          // If no description after transaction line, try to extract from category part
+          var categoryPart = fullTxMatch[4].trim();
+          if (categoryPart && categoryPart.indexOf('Заработная плата') === -1) {
+            description = categoryPart;
+          } else {
+            description = ''; // Skip if it's just salary info
+          }
+        }
+      }
+      
       // Remove common patterns that are not merchant names
       var cleanDesc = description
         .replace(/по карте\s+\*\*\*\*\d+/gi, '') // Remove "по карте ****7426"
         .replace(/\*\*\*\*\d+/g, '') // Remove "****7426"
         .replace(/операция по карте/gi, '') // Remove "Операция по карте"
+        .replace(/операция/gi, '') // Remove "Операция"
         .trim();
       
-      // Split by common delimiters
-      var parts = cleanDesc.split(/\.|RUS|Операция|операция/);
-      if (parts.length > 0) {
-        merchant = parts[0].trim();
-        // Clean up merchant name
-        merchant = merchant.replace(/[\.\-\s]{2,}/g, ' ').trim();
-        // Remove quotes if present
-        merchant = merchant.replace(/^["']|["']$/g, '');
-        // Remove trailing dots and spaces
-        merchant = merchant.replace(/\.+$/, '').trim();
-      }
-      
-      // If merchant is still empty or too short, try to extract from full description
-      if (!merchant || merchant.length < 3) {
-        // Try to find merchant name before "Операция" or "RUS"
-        var match = cleanDesc.match(/^(.+?)(?:\.\s*(?:RUS|Операция)|$)/i);
-        if (match && match[1]) {
-          merchant = match[1].trim();
+      // Skip if description is too short or contains only transaction metadata
+      if (cleanDesc.length < 3 || 
+          cleanDesc.match(/^\d{2}\.\d{2}\.\d{4}/) || // Starts with date
+          cleanDesc.match(/^\d{2}:\d{2}/) || // Starts with time
+          cleanDesc.match(/^\d{6}$/)) { // Just auth code
+        merchant = '';
+      } else {
+        // Split by common delimiters
+        var parts = cleanDesc.split(/\.|RUS/);
+        if (parts.length > 0) {
+          merchant = parts[0].trim();
+          // Clean up merchant name
           merchant = merchant.replace(/[\.\-\s]{2,}/g, ' ').trim();
+          // Remove quotes if present
           merchant = merchant.replace(/^["']|["']$/g, '');
+          // Remove trailing dots and spaces
+          merchant = merchant.replace(/\.+$/, '').trim();
+        }
+        
+        // If merchant is still empty or too short, try to extract from full description
+        if (!merchant || merchant.length < 3) {
+          // Try to find merchant name before "Операция" or "RUS"
+          var match = cleanDesc.match(/^(.+?)(?:\.\s*(?:RUS|Операция)|$)/i);
+          if (match && match[1] && match[1].trim().length >= 3) {
+            merchant = match[1].trim();
+            merchant = merchant.replace(/[\.\-\s]{2,}/g, ' ').trim();
+            merchant = merchant.replace(/^["']|["']$/g, '');
+          }
         }
       }
     }
