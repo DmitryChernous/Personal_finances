@@ -110,22 +110,49 @@ function pfInitializeDashboard_(ss) {
     
     // Calculate data via script instead of QUERY formula to avoid #N/A bug.
     var txSheet = pfFindSheetByKey_(ss, PF_SHEET_KEYS.TRANSACTIONS);
-    if (txSheet && txSheet.getLastRow() > 1) {
+    if (txSheet) {
+      var lastRow = txSheet.getLastRow();
+      if (lastRow <= 1) {
+        // No data rows, skip calculation.
+        return;
+      }
+      
       var today = new Date();
       var monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
       var monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
       
-      var data = txSheet.getRange(2, 1, txSheet.getLastRow() - 1, PF_TRANSACTIONS_SCHEMA.columns.length).getValues();
-      var categoryIdx = pfColumnIndex_(PF_TRANSACTIONS_SCHEMA, 'Category') - 1;
-      var amountIdx = pfColumnIndex_(PF_TRANSACTIONS_SCHEMA, 'Amount') - 1;
-      var typeIdx = pfColumnIndex_(PF_TRANSACTIONS_SCHEMA, 'Type') - 1;
-      var statusIdx = pfColumnIndex_(PF_TRANSACTIONS_SCHEMA, 'Status') - 1;
-      var dateIdx = pfColumnIndex_(PF_TRANSACTIONS_SCHEMA, 'Date') - 1;
+      var data = txSheet.getRange(2, 1, lastRow - 1, PF_TRANSACTIONS_SCHEMA.columns.length).getValues();
+      
+      // Get column indices and validate them.
+      var categoryColIdx = pfColumnIndex_(PF_TRANSACTIONS_SCHEMA, 'Category');
+      var amountColIdx = pfColumnIndex_(PF_TRANSACTIONS_SCHEMA, 'Amount');
+      var typeColIdx = pfColumnIndex_(PF_TRANSACTIONS_SCHEMA, 'Type');
+      var statusColIdx = pfColumnIndex_(PF_TRANSACTIONS_SCHEMA, 'Status');
+      var dateColIdx = pfColumnIndex_(PF_TRANSACTIONS_SCHEMA, 'Date');
+      
+      // Check if all required indices are valid.
+      if (!categoryColIdx || !amountColIdx || !typeColIdx || !statusColIdx || !dateColIdx) {
+        // Missing required columns, skip calculation.
+        return;
+      }
+      
+      var categoryIdx = categoryColIdx - 1;
+      var amountIdx = amountColIdx - 1;
+      var typeIdx = typeColIdx - 1;
+      var statusIdx = statusColIdx - 1;
+      var dateIdx = dateColIdx - 1;
       
       var categoryTotals = {};
       
       for (var i = 0; i < data.length; i++) {
         var row = data[i];
+        
+        // Check if row has enough columns.
+        if (row.length <= categoryIdx || row.length <= amountIdx || 
+            row.length <= typeIdx || row.length <= statusIdx || row.length <= dateIdx) {
+          continue;
+        }
+        
         var date = row[dateIdx];
         var type = row[typeIdx];
         var status = row[statusIdx];
