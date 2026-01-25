@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 10px;
+      margin: 0;
+    }
+    h2 {
+      margin-top: 0;
+      font-size: 16px;
+    }
+    .section {
+      margin-bottom: 20px;
+    }
+    label {
+      display: block;
+      margin-bottom: 5px;
+      font-weight: bold;
+    }
+    input[type="file"] {
+      width: 100%;
+      margin-bottom: 10px;
+    }
+    select, input[type="text"] {
+      width: 100%;
+      padding: 5px;
+      margin-bottom: 10px;
+      box-sizing: border-box;
+    }
+    button {
+      width: 100%;
+      padding: 10px;
+      margin-bottom: 10px;
+      background-color: #4285f4;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    button:hover {
+      background-color: #357ae8;
+    }
+    button:disabled {
+      background-color: #ccc;
+      cursor: not-allowed;
+    }
+    .stats {
+      background-color: #f5f5f5;
+      padding: 10px;
+      border-radius: 4px;
+      margin-bottom: 10px;
+    }
+    .stats-item {
+      margin: 5px 0;
+    }
+    .error {
+      color: #d32f2f;
+      font-size: 12px;
+      margin-top: 5px;
+    }
+    .success {
+      color: #388e3c;
+      font-size: 12px;
+      margin-top: 5px;
+    }
+    .info {
+      background-color: #e3f2fd;
+      padding: 10px;
+      border-radius: 4px;
+      margin-bottom: 10px;
+      font-size: 12px;
+    }
+  </style>
+</head>
+<body>
+  <h2>Импорт транзакций</h2>
+  
+  <div class="info">
+    Поддерживаемые форматы: CSV, Excel (через экспорт в CSV).<br>
+    PDF файлы: экспортируйте в CSV/Excel перед импортом.
+  </div>
+  
+  <div class="section">
+    <label for="fileInput">Выберите файл:</label>
+    <input type="file" id="fileInput" accept=".csv,.txt">
+  </div>
+  
+  <div class="section">
+    <label for="defaultAccount">Счет по умолчанию:</label>
+    <select id="defaultAccount">
+      <option value="">-- Выберите счет --</option>
+    </select>
+  </div>
+  
+  <div class="section">
+    <label for="defaultCurrency">Валюта по умолчанию:</label>
+    <select id="defaultCurrency">
+      <option value="RUB">RUB</option>
+      <option value="USD">USD</option>
+      <option value="EUR">EUR</option>
+    </select>
+  </div>
+  
+  <div class="section">
+    <button id="previewBtn" onclick="handlePreview()">Предпросмотр</button>
+    <button id="commitBtn" onclick="handleCommit()" disabled>Импортировать</button>
+    <button id="commitWithReviewBtn" onclick="handleCommitWithReview()" disabled>Импортировать (включая на проверку)</button>
+  </div>
+  
+  <div id="stats" class="stats" style="display: none;">
+    <div class="stats-item"><strong>Статистика:</strong></div>
+    <div class="stats-item">Всего: <span id="statTotal">0</span></div>
+    <div class="stats-item">Валидных: <span id="statValid">0</span></div>
+    <div class="stats-item">На проверку: <span id="statReview">0</span></div>
+    <div class="stats-item">Дубликатов: <span id="statDuplicates">0</span></div>
+  </div>
+  
+  <div id="message"></div>
+  
+  <script>
+    var fileContent = null;
+    var previewData = null;
+    
+    // Load accounts on page load
+    window.onload = function() {
+      loadAccounts();
+      
+      // Handle file input
+      document.getElementById('fileInput').addEventListener('change', function(e) {
+        var file = e.target.files[0];
+        if (file) {
+          var reader = new FileReader();
+          reader.onload = function(e) {
+            fileContent = e.target.result;
+            document.getElementById('message').innerHTML = 
+              '<div class="success">Файл загружен: ' + file.name + '</div>';
+            // Reset preview
+            previewData = null;
+            document.getElementById('previewBtn').disabled = false;
+            document.getElementById('commitBtn').disabled = true;
+            document.getElementById('commitWithReviewBtn').disabled = true;
+            document.getElementById('stats').style.display = 'none';
+          };
+          reader.readAsText(file, 'UTF-8');
+        }
+      });
+    };
+    
+    function loadAccounts() {
+      google.script.run
+        .withSuccessHandler(function(accounts) {
+          var select = document.getElementById('defaultAccount');
+          accounts.forEach(function(account) {
+            var option = document.createElement('option');
+            option.value = account;
+            option.text = account;
+            select.appendChild(option);
+          });
+        })
+        .withFailureHandler(function(error) {
+          console.error('Error loading accounts:', error);
+        })
+        .pfGetAccountsList_();
+    }
+    
+    function handlePreview() {
+      if (!fileContent) {
+        showError('Сначала выберите файл');
+        return;
+      }
+      
+      var defaultAccount = document.getElementById('defaultAccount').value;
+      var defaultCurrency = document.getElementById('defaultCurrency').value;
+      
+      document.getElementById('previewBtn').disabled = true;
+      document.getElementById('message').innerHTML = '<div>Обработка...</div>';
+      
+      google.script.run
+        .withSuccessHandler(function(result) {
+          previewData = result;
+          showStats(result.stats);
+          document.getElementById('message').innerHTML = 
+            '<div class="success">Предпросмотр готов. Проверьте лист "' + result.stagingSheetName + '"</div>';
+          document.getElementById('previewBtn').disabled = false;
+          document.getElementById('commitBtn').disabled = false;
+          document.getElementById('commitWithReviewBtn').disabled = false;
+        })
+        .withFailureHandler(function(error) {
+          showError('Ошибка при обработке: ' + error.message);
+          document.getElementById('previewBtn').disabled = false;
+        })
+        .pfProcessFileImport_(fileContent, {
+          defaultAccount: defaultAccount,
+          defaultCurrency: defaultCurrency
+        });
+    }
+    
+    function handleCommit() {
+      commitImport(false);
+    }
+    
+    function handleCommitWithReview() {
+      commitImport(true);
+    }
+    
+    function commitImport(includeNeedsReview) {
+      if (!previewData) {
+        showError('Сначала выполните предпросмотр');
+        return;
+      }
+      
+      document.getElementById('commitBtn').disabled = true;
+      document.getElementById('commitWithReviewBtn').disabled = true;
+      document.getElementById('message').innerHTML = '<div>Импорт...</div>';
+      
+      google.script.run
+        .withSuccessHandler(function(result) {
+          if (result.success) {
+            document.getElementById('message').innerHTML = 
+              '<div class="success">' + result.message + '</div>';
+            // Reset
+            previewData = null;
+            document.getElementById('fileInput').value = '';
+            fileContent = null;
+            document.getElementById('stats').style.display = 'none';
+            document.getElementById('commitBtn').disabled = true;
+            document.getElementById('commitWithReviewBtn').disabled = true;
+          } else {
+            showError(result.message);
+            document.getElementById('commitBtn').disabled = false;
+            document.getElementById('commitWithReviewBtn').disabled = false;
+          }
+        })
+        .withFailureHandler(function(error) {
+          showError('Ошибка при импорте: ' + error.message);
+          document.getElementById('commitBtn').disabled = false;
+          document.getElementById('commitWithReviewBtn').disabled = false;
+        })
+        .pfCommitImport_(includeNeedsReview);
+    }
+    
+    function showStats(stats) {
+      document.getElementById('statTotal').textContent = stats.total;
+      document.getElementById('statValid').textContent = stats.valid;
+      document.getElementById('statReview').textContent = stats.needsReview;
+      document.getElementById('statDuplicates').textContent = stats.duplicates;
+      document.getElementById('stats').style.display = 'block';
+    }
+    
+    function showError(message) {
+      document.getElementById('message').innerHTML = 
+        '<div class="error">' + message + '</div>';
+    }
+  </script>
+</body>
+</html>

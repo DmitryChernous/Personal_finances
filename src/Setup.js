@@ -44,6 +44,9 @@ function pfRunSetup_() {
   // Create/rename sheets and set headers according to selected language.
   pfApplyLocalization_(ss);
 
+  // Ensure Import_Raw staging sheet exists
+  pfEnsureImportRawSheet_(ss);
+
   // Apply filters, named ranges and validations.
   pfConfigureReferenceSheets_(ss);
   pfConfigureTransactionsSheet_(ss);

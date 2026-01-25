@@ -388,9 +388,10 @@ function pfCommitImport_(includeNeedsReview) {
   }
   
   var txSheet = pfFindOrCreateSheetByKey_(ss, PF_SHEET_KEYS.TRANSACTIONS);
-  var data = stagingSheet.getRange(2, 1, stagingSheet.getLastRow() - 1, PF_TRANSACTIONS_SCHEMA.columns.length).getValues();
-  var statusCol = stagingSheet.getLastColumn() - 1; // Status is in transactions schema
-  var errorCol = stagingSheet.getLastColumn() - 1; // Error column is last-1, dedupe is last
+  var numDataCols = PF_TRANSACTIONS_SCHEMA.columns.length;
+  var data = stagingSheet.getRange(2, 1, stagingSheet.getLastRow() - 1, numDataCols).getValues();
+  var statusColIdx = pfColumnIndex_(PF_TRANSACTIONS_SCHEMA, 'Status');
+  var errorCol = numDataCols + 1; // Error column is after transaction columns
   
   var rowsToAdd = [];
   var stats = {
@@ -401,7 +402,7 @@ function pfCommitImport_(includeNeedsReview) {
   
   for (var i = 0; i < data.length; i++) {
     var row = data[i];
-    var statusValue = stagingSheet.getRange(i + 2, statusCol).getValue();
+    var statusValue = statusColIdx ? row[statusColIdx - 1] : 'ok';
     var hasErrors = stagingSheet.getRange(i + 2, errorCol).getValue() !== '';
     
     // Skip duplicates
@@ -443,6 +444,67 @@ function pfCommitImport_(includeNeedsReview) {
     stats: stats,
     message: 'Импортировано: ' + stats.added + ' транзакций. Пропущено: ' + stats.skipped + '. На проверку: ' + stats.needsReview
   };
+}
+
+/**
+ * Process file import (called from UI).
+ * @param {string} fileContent - File content as string
+ * @param {Object} options - Import options
+ * @returns {Object} Preview result
+ */
+function pfProcessFileImport_(fileContent, options) {
+  options = options || {};
+  
+  // Detect and use appropriate importer
+  var importer = PF_CSV_IMPORTER;
+  
+  if (!importer.detect(fileContent)) {
+    throw new Error('Формат файла не поддерживается. Используйте CSV файл.');
+  }
+  
+  // Parse
+  var rawData = importer.parse(fileContent, options);
+  if (rawData.length === 0) {
+    throw new Error('Файл пуст или не содержит данных');
+  }
+  
+  // Process
+  var result = pfProcessImportData_(rawData, importer, {
+    source: 'import:csv',
+    defaultAccount: options.defaultAccount,
+    defaultCurrency: options.defaultCurrency
+  });
+  
+  // Preview
+  var preview = pfPreviewImport_(result.transactions);
+  
+  return preview;
+}
+
+/**
+ * Get list of accounts for dropdown.
+ * @returns {Array<string>}
+ */
+function pfGetAccountsList_() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var accountsSheet = pfFindSheetByKey_(ss, PF_SHEET_KEYS.ACCOUNTS);
+  if (!accountsSheet || accountsSheet.getLastRow() <= 1) {
+    return [];
+  }
+  
+  var accounts = [];
+  var accountCol = pfColumnIndex_(PF_ACCOUNTS_SCHEMA, 'Account');
+  if (accountCol) {
+    var data = accountsSheet.getRange(2, accountCol, accountsSheet.getLastRow() - 1, 1).getValues();
+    for (var i = 0; i < data.length; i++) {
+      var account = String(data[i][0] || '').trim();
+      if (account) {
+        accounts.push(account);
+      }
+    }
+  }
+  
+  return accounts;
 }
 
 /**
