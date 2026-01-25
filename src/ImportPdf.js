@@ -23,12 +23,13 @@ function pfExtractTextFromPdf_(pdfFile, options) {
     var blob = null;
     
     // Handle different input types
-    if (pdfFile instanceof Blob) {
+    // Check if it's a Blob by checking for Blob methods (instanceof Blob doesn't work in Apps Script)
+    if (pdfFile && typeof pdfFile.getContentType === 'function') {
       blob = pdfFile;
       // Upload to Drive temporarily
       var tempFile = DriveApp.createFile(blob);
       fileId = tempFile.getId();
-    } else if (pdfFile.getId) {
+    } else if (pdfFile && typeof pdfFile.getId === 'function') {
       // It's a Drive File
       fileId = pdfFile.getId();
       blob = pdfFile.getBlob();
@@ -68,7 +69,7 @@ function pfExtractTextFromPdf_(pdfFile, options) {
     }
     
     // Clean up temporary file if we created it
-    if (fileId && pdfFile instanceof Blob) {
+    if (fileId && pdfFile && typeof pdfFile.getContentType === 'function') {
       try {
         DriveApp.getFileById(fileId).setTrashed(true);
       } catch (e) {
@@ -133,8 +134,8 @@ var PF_PDF_IMPORTER = {
       return true;
     }
     
-    // Check by MIME type if it's a Blob
-    if (data instanceof Blob) {
+    // Check by MIME type if it's a Blob (check for Blob methods)
+    if (data && typeof data.getContentType === 'function') {
       return data.getContentType() === 'application/pdf';
     }
     
@@ -155,7 +156,8 @@ var PF_PDF_IMPORTER = {
     var blob = null;
     
     // Handle different input types
-    if (data instanceof Blob) {
+    // Check if it's a Blob by checking for Blob methods (instanceof Blob doesn't work in Apps Script)
+    if (data && typeof data.getContentType === 'function') {
       blob = data;
     } else if (typeof data === 'string') {
       // Assume base64 encoded PDF
