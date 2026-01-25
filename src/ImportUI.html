@@ -246,58 +246,8 @@
       document.getElementById('previewBtn').disabled = true;
       document.getElementById('message').innerHTML = '<div>Обработка файла...</div>';
       
-      // Show progress
-      showProgress('Начало обработки файла...', 10);
-      
-      // Set timeout to show if processing takes too long
-      var timeoutId = setTimeout(function() {
-        updateProgress('Обработка большого файла, пожалуйста подождите...', 30);
-      }, 2000);
-      
-      var timeoutId2 = setTimeout(function() {
-        updateProgress('Файл обрабатывается, это может занять некоторое время...', 50);
-      }, 5000);
-      
-      var timeoutId3 = setTimeout(function() {
-        updateProgress('Почти готово, завершение обработки...', 80);
-      }, 10000);
-      
-      google.script.run
-        .withSuccessHandler(function(result) {
-          clearTimeout(timeoutId);
-          clearTimeout(timeoutId2);
-          clearTimeout(timeoutId3);
-          
-          hideProgress();
-          previewData = result;
-          showStats(result.stats);
-          document.getElementById('message').innerHTML = 
-            '<div class="success">Предпросмотр готов. Проверьте лист "' + result.stagingSheetName + '"</div>';
-          document.getElementById('previewBtn').disabled = false;
-          document.getElementById('commitBtn').disabled = false;
-          document.getElementById('commitWithReviewBtn').disabled = false;
-        })
-        .withFailureHandler(function(error) {
-          clearTimeout(timeoutId);
-          clearTimeout(timeoutId2);
-          clearTimeout(timeoutId3);
-          
-          hideProgress();
-          var errorMessage = 'Ошибка при обработке';
-          if (error && error.message) {
-            errorMessage += ': ' + error.message;
-          } else if (error && typeof error === 'string') {
-            errorMessage += ': ' + error;
-          } else {
-            errorMessage += '. Возможно, файл слишком большой или произошла ошибка на сервере.';
-          }
-          showError(errorMessage);
-          document.getElementById('previewBtn').disabled = false;
-        })
-        .pfProcessFileImport_(fileContent, {
-          defaultAccount: defaultAccount,
-          defaultCurrency: defaultCurrency
-        });
+      // Process in steps with real progress
+      processImportWithProgress(fileContent, defaultAccount, defaultCurrency);
     }
     
     function handleCommit() {
@@ -371,6 +321,130 @@
     function hideProgress() {
       document.getElementById('progress').style.display = 'none';
       document.getElementById('progressBar').style.width = '0%';
+    }
+    
+    /**
+     * Process import in steps with real progress updates.
+     */
+    function processImportWithProgress(fileContent, defaultAccount, defaultCurrency) {
+      var options = {
+        defaultAccount: defaultAccount,
+        defaultCurrency: defaultCurrency
+      };
+      
+      // Step 1: Detect format (5%)
+      showProgress('Определение формата файла...', 5);
+      google.script.run
+        .withSuccessHandler(function(formatInfo) {
+          if (!formatInfo.detected) {
+            hideProgress();
+            showError('Формат файла не поддерживается. Используйте CSV файл или выписку Сбербанка.');
+            document.getElementById('previewBtn').disabled = false;
+            return;
+          }
+          
+          // Step 2: Parse file (5-30%)
+          updateProgress('Парсинг файла...', 10);
+          google.script.run
+            .withSuccessHandler(function(parseResult) {
+              if (parseResult.count === 0) {
+                hideProgress();
+                showError('Файл пуст или не содержит данных для импорта');
+                document.getElementById('previewBtn').disabled = false;
+                return;
+              }
+              
+              updateProgress('Найдено транзакций: ' + parseResult.count + '. Обработка данных...', 15);
+              
+              // Step 3: Process data in batches
+              processDataInBatches(parseResult.rawData, formatInfo.importerType, options, parseResult.count);
+            })
+            .withFailureHandler(function(error) {
+              hideProgress();
+              showError('Ошибка при парсинге файла: ' + (error.message || error.toString()));
+              document.getElementById('previewBtn').disabled = false;
+            })
+            .pfParseFileContent_(fileContent, formatInfo.importerType, options);
+        })
+        .withFailureHandler(function(error) {
+          hideProgress();
+          showError('Ошибка при определении формата: ' + (error.message || error.toString()));
+          document.getElementById('previewBtn').disabled = false;
+        })
+        .pfDetectFileFormat_(fileContent);
+    }
+    
+    /**
+     * Process data in batches with progress updates.
+     */
+    function processDataInBatches(rawData, importerType, options, totalCount) {
+      var allTransactions = [];
+      var totalStats = {
+        valid: 0,
+        needsReview: 0,
+        duplicates: 0,
+        errors: 0
+      };
+      var batchSize = 200;
+      var processed = 0;
+      var batchIndex = 0;
+      
+      function processNextBatch() {
+        if (processed >= rawData.length) {
+          // All processed, write preview
+          updateProgress('Запись предпросмотра в таблицу...', 90);
+          google.script.run
+            .withSuccessHandler(function(preview) {
+              hideProgress();
+              previewData = preview;
+              preview.stats.total = allTransactions.length;
+              preview.stats.valid = totalStats.valid;
+              preview.stats.needsReview = totalStats.needsReview;
+              preview.stats.duplicates = totalStats.duplicates;
+              showStats(preview.stats);
+              document.getElementById('message').innerHTML = 
+                '<div class="success">Предпросмотр готов. Проверьте лист "' + preview.stagingSheetName + '"</div>';
+              document.getElementById('previewBtn').disabled = false;
+              document.getElementById('commitBtn').disabled = false;
+              document.getElementById('commitWithReviewBtn').disabled = false;
+            })
+            .withFailureHandler(function(error) {
+              hideProgress();
+              showError('Ошибка при создании предпросмотра: ' + (error.message || error.toString()));
+              document.getElementById('previewBtn').disabled = false;
+            })
+            .pfWritePreview_(allTransactions);
+          return;
+        }
+        
+        // Calculate progress (15% to 85%)
+        var progress = 15 + Math.floor((processed / totalCount) * 70);
+        var remaining = totalCount - processed;
+        updateProgress('Обработка транзакций: ' + processed + ' из ' + totalCount + ' (' + remaining + ' осталось)...', progress);
+        
+        // Process batch
+        google.script.run
+          .withSuccessHandler(function(batchResult) {
+            allTransactions = allTransactions.concat(batchResult.transactions);
+            totalStats.valid += batchResult.stats.valid;
+            totalStats.needsReview += batchResult.stats.needsReview;
+            totalStats.duplicates += batchResult.stats.duplicates;
+            totalStats.errors += batchResult.stats.errors;
+            processed = batchResult.processed;
+            
+            // Continue with next batch
+            setTimeout(processNextBatch, 10); // Small delay to allow UI update
+          })
+          .withFailureHandler(function(error) {
+            hideProgress();
+            showError('Ошибка при обработке данных (строка ' + (processed + 1) + '): ' + (error.message || error.toString()));
+            document.getElementById('previewBtn').disabled = false;
+          })
+          .pfProcessDataBatch_(rawData, importerType, options, batchSize, processed);
+      }
+      
+      // Start processing
+      processNextBatch();
     }
   </script>
 </body>

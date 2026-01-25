@@ -447,7 +447,151 @@ function pfCommitImport_(includeNeedsReview) {
 }
 
 /**
- * Process file import (called from UI).
+ * Step 1: Detect file format and return importer info.
+ * @param {string} fileContent - File content as string
+ * @returns {Object} {importerType: string, detected: boolean}
+ */
+function pfDetectFileFormat_(fileContent) {
+  if (typeof PF_SBERBANK_IMPORTER !== 'undefined' && PF_SBERBANK_IMPORTER.detect(fileContent)) {
+    return { importerType: 'sberbank', detected: true };
+  } else if (PF_CSV_IMPORTER.detect(fileContent)) {
+    return { importerType: 'csv', detected: true };
+  }
+  return { importerType: null, detected: false };
+}
+
+/**
+ * Step 2: Parse file content.
+ * @param {string} fileContent - File content as string
+ * @param {string} importerType - 'sberbank' or 'csv'
+ * @param {Object} options - Parse options
+ * @returns {Object} {rawData: Array, count: number, errors: Array}
+ */
+function pfParseFileContent_(fileContent, importerType, options) {
+  options = options || {};
+  var importer = null;
+  
+  if (importerType === 'sberbank') {
+    importer = PF_SBERBANK_IMPORTER;
+  } else if (importerType === 'csv') {
+    importer = PF_CSV_IMPORTER;
+  } else {
+    throw new Error('Неизвестный тип импортера: ' + importerType);
+  }
+  
+  var rawData = [];
+  var errors = [];
+  
+  try {
+    rawData = importer.parse(fileContent, options);
+  } catch (parseError) {
+    errors.push('Ошибка парсинга: ' + (parseError.message || parseError.toString()));
+    throw new Error('Ошибка при парсинге файла: ' + (parseError.message || parseError.toString()));
+  }
+  
+  return {
+    rawData: rawData,
+    count: rawData.length,
+    errors: errors
+  };
+}
+
+/**
+ * Step 3: Process raw data in batches with progress tracking.
+ * @param {Array<Object>} rawData - Raw data from parser
+ * @param {string} importerType - 'sberbank' or 'csv'
+ * @param {Object} options - Processing options
+ * @param {number} batchSize - Number of items to process per batch (default: 100)
+ * @param {number} startIndex - Start index for this batch (default: 0)
+ * @returns {Object} {transactions: Array, stats: Object, processed: number, total: number, hasMore: boolean}
+ */
+function pfProcessDataBatch_(rawData, importerType, options, batchSize, startIndex) {
+  batchSize = batchSize || 100;
+  startIndex = startIndex || 0;
+  options = options || {};
+  
+  var importer = null;
+  if (importerType === 'sberbank') {
+    importer = PF_SBERBANK_IMPORTER;
+  } else if (importerType === 'csv') {
+    importer = PF_CSV_IMPORTER;
+  } else {
+    throw new Error('Неизвестный тип импортера: ' + importerType);
+  }
+  
+  var sourceName = importerType === 'sberbank' ? 'import:sberbank' : 'import:csv';
+  var endIndex = Math.min(startIndex + batchSize, rawData.length);
+  var transactions = [];
+  var stats = {
+    valid: 0,
+    needsReview: 0,
+    duplicates: 0,
+    errors: 0
+  };
+  
+  // Get existing keys only once (cache it)
+  if (!options._existingKeys) {
+    options._existingKeys = pfGetExistingTransactionKeys_();
+  }
+  var existingKeys = options._existingKeys;
+  
+  for (var i = startIndex; i < endIndex; i++) {
+    try {
+      var transaction = importer.normalize(rawData[i], options);
+      var dedupeKey = importer.dedupeKey(transaction);
+      
+      if (existingKeys[dedupeKey]) {
+        transaction.status = 'duplicate';
+        stats.duplicates++;
+      } else {
+        existingKeys[dedupeKey] = true;
+      }
+      
+      if (transaction.errors && transaction.errors.length > 0) {
+        transaction.status = 'needs_review';
+        stats.needsReview++;
+        stats.errors++;
+      } else if (transaction.status === 'ok') {
+        stats.valid++;
+      }
+      
+      transactions.push(transaction);
+    } catch (e) {
+      stats.errors++;
+      transactions.push({
+        date: new Date(),
+        type: 'expense',
+        account: '',
+        amount: 0,
+        currency: 'RUB',
+        source: sourceName,
+        status: 'needs_review',
+        errors: [{ field: 'General', message: 'Ошибка парсинга (строка ' + (i + 1) + '): ' + e.toString() }],
+        rawData: JSON.stringify(rawData[i])
+      });
+    }
+  }
+  
+  return {
+    transactions: transactions,
+    stats: stats,
+    processed: endIndex,
+    total: rawData.length,
+    hasMore: endIndex < rawData.length
+  };
+}
+
+/**
+ * Step 4: Write preview to staging sheet.
+ * @param {Array<TransactionDTO>} transactions - All processed transactions
+ * @returns {Object} Preview result
+ */
+function pfWritePreview_(transactions) {
+  return pfPreviewImport_(transactions);
+}
+
+/**
+ * Process file import (called from UI) - simplified version that calls steps.
  * @param {string} fileContent - File content as string
  * @param {Object} options - Import options
  * @returns {Object} Preview result
@@ -456,58 +600,53 @@ function pfProcessFileImport_(fileContent, options) {
   options = options || {};
   
   try {
-    // Detect and use appropriate importer
-    // Try Sberbank first (more specific), then generic CSV
-    var importer = null;
-    
-    if (typeof PF_SBERBANK_IMPORTER !== 'undefined' && PF_SBERBANK_IMPORTER.detect(fileContent)) {
-      importer = PF_SBERBANK_IMPORTER;
-    } else if (PF_CSV_IMPORTER.detect(fileContent)) {
-      importer = PF_CSV_IMPORTER;
-    } else {
+    // Step 1: Detect format
+    var formatInfo = pfDetectFileFormat_(fileContent);
+    if (!formatInfo.detected) {
       throw new Error('Формат файла не поддерживается. Используйте CSV файл или выписку Сбербанка.');
     }
     
-    // Parse (this can take time for large files)
-    var rawData = [];
-    try {
-      rawData = importer.parse(fileContent, options);
-    } catch (parseError) {
-      throw new Error('Ошибка при парсинге файла: ' + (parseError.message || parseError.toString()));
-    }
-    
-    if (rawData.length === 0) {
+    // Step 2: Parse
+    var parseResult = pfParseFileContent_(fileContent, formatInfo.importerType, options);
+    if (parseResult.count === 0) {
       throw new Error('Файл пуст или не содержит данных для импорта');
     }
     
-    // Process (this can also take time)
-    var result = null;
-    try {
-      var sourceName = importer === PF_SBERBANK_IMPORTER ? 'import:sberbank' : 'import:csv';
-      result = pfProcessImportData_(rawData, importer, {
-        source: sourceName,
-        defaultAccount: options.defaultAccount,
-        defaultCurrency: options.defaultCurrency
-      });
-    } catch (processError) {
-      throw new Error('Ошибка при обработке данных: ' + (processError.message || processError.toString()));
+    // Step 3: Process all data (for now, process in one go, but can be batched)
+    var allTransactions = [];
+    var totalStats = {
+      valid: 0,
+      needsReview: 0,
+      duplicates: 0,
+      errors: 0
+    };
+    
+    var batchSize = 200; // Process 200 at a time
+    var processed = 0;
+    
+    while (processed < parseResult.rawData.length) {
+      var batchResult = pfProcessDataBatch_(parseResult.rawData, formatInfo.importerType, options, batchSize, processed);
+      allTransactions = allTransactions.concat(batchResult.transactions);
+      totalStats.valid += batchResult.stats.valid;
+      totalStats.needsReview += batchResult.stats.needsReview;
+      totalStats.duplicates += batchResult.stats.duplicates;
+      totalStats.errors += batchResult.stats.errors;
+      processed = batchResult.processed;
     }
     
-    if (!result || !result.transactions || result.transactions.length === 0) {
+    if (allTransactions.length === 0) {
       throw new Error('Не удалось обработать транзакции из файла');
     }
     
-    // Preview (this writes to sheet, can take time)
-    var preview = null;
-    try {
-      preview = pfPreviewImport_(result.transactions);
-    } catch (previewError) {
-      throw new Error('Ошибка при создании предпросмотра: ' + (previewError.message || previewError.toString()));
-    }
+    // Step 4: Preview
+    var preview = pfWritePreview_(allTransactions);
+    preview.stats.total = allTransactions.length;
+    preview.stats.valid = totalStats.valid;
+    preview.stats.needsReview = totalStats.needsReview;
+    preview.stats.duplicates = totalStats.duplicates;
     
     return preview;
   } catch (error) {
-    // Re-throw with more context
     var errorMessage = error.message || error.toString();
     if (errorMessage.indexOf('timeout') !== -1 || errorMessage.indexOf('exceeded') !== -1) {
       throw new Error('Файл слишком большой или обработка заняла слишком много времени. Попробуйте разбить файл на части или уменьшить количество транзакций.');
