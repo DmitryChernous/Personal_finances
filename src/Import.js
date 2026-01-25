@@ -825,6 +825,9 @@ function pfProcessDataBatch(rawDataJson, importerType, options, batchSize, start
       options = {};
     }
     
+    // Get spreadsheet for auto-categorization
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    
     // Parse JSON string back to array
     // Note: rawDataJson now contains only the batch data, not the entire array
     var rawData = null;
@@ -894,6 +897,12 @@ function pfProcessDataBatch(rawDataJson, importerType, options, batchSize, start
         }
         
         var transaction = importer.normalize(rawData[i], options);
+        
+        // Apply auto-categorization if category is not set
+        if (!transaction.category || String(transaction.category).trim() === '') {
+          transaction = pfApplyCategoryRules_(transaction, ss);
+        }
+        
         var dedupeKey = importer.dedupeKey(transaction);
         
         if (existingKeys[dedupeKey]) {

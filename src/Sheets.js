@@ -72,6 +72,7 @@ function pfApplyLocalization_(ss) {
   pfFindOrCreateSheetByKey_(ss, PF_SHEET_KEYS.HELP);
   pfFindOrCreateSheetByKey_(ss, PF_SHEET_KEYS.BUDGETS);
   pfFindOrCreateSheetByKey_(ss, PF_SHEET_KEYS.RECURRING_TRANSACTIONS);
+  pfFindOrCreateSheetByKey_(ss, PF_SHEET_KEYS.CATEGORY_RULES);
 
   // Headers for Transactions (first row).
   var txSheet = pfFindOrCreateSheetByKey_(ss, PF_SHEET_KEYS.TRANSACTIONS);
@@ -89,6 +90,9 @@ function pfApplyLocalization_(ss) {
 
   var recurringSheet = pfFindOrCreateSheetByKey_(ss, PF_SHEET_KEYS.RECURRING_TRANSACTIONS);
   pfEnsureHeaderRow_(recurringSheet, PF_RECURRING_TRANSACTIONS_SCHEMA);
+
+  var categoryRulesSheet = pfFindOrCreateSheetByKey_(ss, PF_SHEET_KEYS.CATEGORY_RULES);
+  pfEnsureHeaderRow_(categoryRulesSheet, PF_CATEGORY_RULES_SCHEMA);
 }
 
 /**

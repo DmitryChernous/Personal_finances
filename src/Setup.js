@@ -64,6 +64,12 @@ function pfRunSetup_() {
   // Initialize RecurringTransactions sheet.
   pfInitializeRecurringTransactions_(ss);
 
+  // Initialize CategoryRules sheet.
+  pfInitializeCategoryRules_(ss);
+  
+  // Create default rules if sheet is empty.
+  pfCreateDefaultCategoryRules_(ss);
+
   SpreadsheetApp.flush();
 }
 

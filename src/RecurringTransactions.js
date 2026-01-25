@@ -179,22 +179,20 @@ function pfShouldCreateTransaction_(recurringTx, currentDate) {
     
     if (frequency === PF_RECURRING_FREQUENCY.WEEKLY) {
       // Weekly: check if >= 7 days passed since base date
-      // Also check if current day of week matches DayOfWeek (if specified)
       if (daysDiff >= 7) {
         var dayOfWeek = recurringTx.DayOfWeek;
         if (dayOfWeek) {
           // Convert: our DayOfWeek (1=Monday, 7=Sunday) to JS getDay() (0=Sunday, 1=Monday, ..., 6=Saturday)
           var jsDayOfWeek = dayOfWeek === 7 ? 0 : dayOfWeek;
-          if (currentDate.getDay() === jsDayOfWeek) {
-            return true;
-          }
-          // If day doesn't match, check if we're past the scheduled day this week
           var currentDay = currentDate.getDay();
-          var scheduledDay = jsDayOfWeek;
-          // If we're past the scheduled day this week and it's been >= 7 days, create it
-          if (currentDay > scheduledDay && daysDiff >= 7) {
+          
+          // Check if current day matches scheduled day, or if we're past the scheduled day this week
+          if (currentDay === jsDayOfWeek || currentDay > jsDayOfWeek) {
             return true;
           }
+          // If scheduled day hasn't come yet this week, but it's been >= 7 days, create it anyway
+          // (we'll use the last occurrence of that day)
+          return true;
         } else {
           // No DayOfWeek specified, just check if >= 7 days
           return daysDiff >= 7;
@@ -446,10 +444,30 @@ function pfCreateRecurringTransactions_(ss, startDate, endDate) {
           var lastDayOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
           var day = Math.min(recurringTx.DayOfMonth, lastDayOfMonth);
           transactionDate = new Date(today.getFullYear(), today.getMonth(), day);
+          // If day already passed this month, use it; otherwise use today
+          if (transactionDate > today) {
+            transactionDate = today;
+          }
         }
       } else if (recurringTx.Frequency === PF_RECURRING_FREQUENCY.WEEKLY) {
-        // Use current date (or nearest past day of week)
-        transactionDate = today;
+        // For weekly, use the scheduled day of week (or today if day already passed)
+        var dayOfWeek = recurringTx.DayOfWeek;
+        if (dayOfWeek) {
+          // Convert: our DayOfWeek (1=Monday, 7=Sunday) to JS getDay() (0=Sunday, 1=Monday, ..., 6=Saturday)
+          var jsDayOfWeek = dayOfWeek === 7 ? 0 : dayOfWeek;
+          var currentDay = today.getDay();
+          var daysToSubtract = (currentDay - jsDayOfWeek + 7) % 7;
+          if (daysToSubtract === 0 && currentDay === jsDayOfWeek) {
+            // Today is the scheduled day
+            transactionDate = today;
+          } else {
+            // Use the last occurrence of the scheduled day
+            transactionDate = new Date(today);
+            transactionDate.setDate(today.getDate() - daysToSubtract);
+          }
+        } else {
+          transactionDate = today;
+        }
       }
       
       // Ensure date is within period
@@ -563,4 +581,87 @@ function pfCreateRecurringTransactions() {
     var handled = pfHandleError_(e, 'pfCreateRecurringTransactions', 'Ошибка при создании регулярных транзакций');
     SpreadsheetApp.getUi().alert('Ошибка: ' + handled.message);
   }
+}
+
+/**
+ * Test function for recurring transactions.
+ * Can be run from Apps Script editor to debug.
+ */
+function testRecurringTransactions() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  
+  // Test 1: Check if sheet exists
+  var recurringSheet = pfFindSheetByKey_(ss, PF_SHEET_KEYS.RECURRING_TRANSACTIONS);
+  Logger.log('Test 1 - RecurringTransactions sheet exists: ' + (recurringSheet !== null));
+  
+  if (!recurringSheet) {
+    Logger.log('ERROR: RecurringTransactions sheet not found. Run Setup first.');
+    return;
+  }
+  
+  // Test 2: Read data
+  var lastRow = recurringSheet.getLastRow();
+  Logger.log('Test 2 - Last row: ' + lastRow);
+  
+  if (lastRow <= 1) {
+    Logger.log('WARNING: No recurring transactions found in sheet.');
+    return;
+  }
+  
+  // Test 3: Read and parse first row
+  var data = recurringSheet.getRange(2, 1, lastRow - 1, PF_RECURRING_TRANSACTIONS_SCHEMA.columns.length)
+    .getValues();
+  Logger.log('Test 3 - Data rows: ' + data.length);
+  
+  if (data.length === 0) {
+    Logger.log('WARNING: No data rows found.');
+    return;
+  }
+  
+  // Get column indices
+  var nameColIdx = pfColumnIndex_(PF_RECURRING_TRANSACTIONS_SCHEMA, 'Name');
+  var typeColIdx = pfColumnIndex_(PF_RECURRING_TRANSACTIONS_SCHEMA, 'Type');
+  var frequencyColIdx = pfColumnIndex_(PF_RECURRING_TRANSACTIONS_SCHEMA, 'Frequency');
+  var startDateColIdx = pfColumnIndex_(PF_RECURRING_TRANSACTIONS_SCHEMA, 'StartDate');
+  var activeColIdx = pfColumnIndex_(PF_RECURRING_TRANSACTIONS_SCHEMA, 'Active');
+  var lastCreatedColIdx = pfColumnIndex_(PF_RECURRING_TRANSACTIONS_SCHEMA, 'LastCreated');
+  
+  Logger.log('Test 4 - Column indices: name=' + nameColIdx + ', type=' + typeColIdx + ', frequency=' + frequencyColIdx + ', startDate=' + startDateColIdx);
+  
+  // Test 5: Parse first row
+  var firstRow = data[0];
+  var recurringTx = {
+    Name: String(firstRow[nameColIdx - 1] || '').trim(),
+    Type: String(firstRow[typeColIdx - 1] || '').trim(),
+    Frequency: String(firstRow[frequencyColIdx - 1] || '').trim(),
+    StartDate: firstRow[startDateColIdx - 1] instanceof Date ? firstRow[startDateColIdx - 1] : null,
+    Active: activeColIdx >= 0 ? firstRow[activeColIdx - 1] : true,
+    LastCreated: lastCreatedColIdx >= 0 && firstRow[lastCreatedColIdx] instanceof Date ? firstRow[lastCreatedColIdx] : null
+  };
+  
+  Logger.log('Test 5 - First recurring transaction:');
+  Logger.log('  Name: ' + recurringTx.Name);
+  Logger.log('  Type: ' + recurringTx.Type);
+  Logger.log('  Frequency: ' + recurringTx.Frequency);
+  Logger.log('  StartDate: ' + recurringTx.StartDate + ' (type: ' + typeof recurringTx.StartDate + ')');
+  Logger.log('  Active: ' + recurringTx.Active + ' (type: ' + typeof recurringTx.Active + ')');
+  Logger.log('  LastCreated: ' + recurringTx.LastCreated + ' (type: ' + typeof recurringTx.LastCreated + ')');
+  
+  // Test 6: Check if should create
+  var shouldCreate = pfShouldCreateTransaction_(recurringTx, new Date());
+  Logger.log('Test 6 - Should create transaction: ' + shouldCreate);
+  
+  // Test 7: Get next due date
+  var nextDueDate = pfGetNextDueDate_(recurringTx);
+  Logger.log('Test 7 - Next due date: ' + nextDueDate);
+  
+  // Test 8: Try to create transactions
+  Logger.log('Test 8 - Running pfCreateRecurringTransactions_...');
+  var result = pfCreateRecurringTransactions_(ss);
+  Logger.log('Test 8 - Result: success=' + result.success + ', message=' + result.message);
+  if (result.data) {
+    Logger.log('Test 8 - Stats: created=' + result.data.created + ', skipped=' + result.data.skipped + ', errors=' + result.data.errors);
+  }
+  
+  Logger.log('=== All tests completed ===');
 }

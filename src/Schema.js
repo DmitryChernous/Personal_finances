@@ -108,3 +108,21 @@ var PF_RECURRING_TRANSACTIONS_SCHEMA = {
   ]
 };
 
+/**
+ * Category Rules sheet schema.
+ * Headers are resolved via i18n using `key` (see `src/I18n.js`).
+ */
+var PF_CATEGORY_RULES_SCHEMA = {
+  sheetKey: 'category_rules',
+  columns: [
+    { key: 'RuleName', required: true },
+    { key: 'Pattern', required: true },
+    { key: 'PatternType', required: true, allowed: ['contains', 'startsWith', 'endsWith', 'regex', 'exact'] },
+    { key: 'Category', required: true },
+    { key: 'Subcategory', required: false },
+    { key: 'Priority', required: false },
+    { key: 'Active', required: false },
+    { key: 'ApplyTo', required: false, allowed: ['merchant', 'description', 'both'] }
+  ]
+};
+

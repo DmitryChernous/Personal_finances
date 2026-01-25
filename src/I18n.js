@@ -24,7 +24,8 @@ var PF_SHEET_KEYS = {
   HELP: 'help',
   IMPORT_RAW: 'import_raw',
   BUDGETS: 'budgets',
-  RECURRING_TRANSACTIONS: 'recurring_transactions'
+  RECURRING_TRANSACTIONS: 'recurring_transactions',
+  CATEGORY_RULES: 'category_rules'
 };
 
 var PF_I18N = {
@@ -42,6 +43,7 @@ var PF_I18N = {
       find_duplicate: 'Найти дубликат (по ключу)',
       update_budgets: 'Обновить бюджеты',
       create_recurring: 'Создать регулярные платежи',
+      apply_auto_categorization: 'Применить автокатегоризацию',
       language: 'Язык',
       lang_ru: 'Русский',
       lang_en: 'English'
@@ -56,7 +58,8 @@ var PF_I18N = {
       help: 'Инструкция',
       import_raw: 'Импорт (черновик)',
       budgets: 'Бюджеты',
-      recurring_transactions: 'Регулярные платежи'
+      recurring_transactions: 'Регулярные платежи',
+      category_rules: 'Правила категоризации'
     },
     columns: {
       Date: 'Дата',
@@ -81,7 +84,12 @@ var PF_I18N = {
       PeriodValue: 'Значение периода',
       Fact: 'Факт',
       Remaining: 'Остаток',
-      PercentUsed: '% использования'
+      PercentUsed: '% использования',
+      RuleName: 'Название правила',
+      Pattern: 'Паттерн',
+      PatternType: 'Тип паттерна',
+      Priority: 'Приоритет',
+      ApplyTo: 'Применять к'
     },
     budget_status: {
       ok: 'В норме',
@@ -93,6 +101,18 @@ var PF_I18N = {
       monthly: 'Ежемесячно',
       quarterly: 'Ежеквартально',
       yearly: 'Ежегодно'
+    },
+    pattern_type: {
+      contains: 'Содержит',
+      startsWith: 'Начинается с',
+      endsWith: 'Заканчивается на',
+      regex: 'Регулярное выражение',
+      exact: 'Точное совпадение'
+    },
+    rule_apply_to: {
+      merchant: 'Только место/контрагент',
+      description: 'Только комментарий',
+      both: 'Оба поля'
     }
   },
   en: {
@@ -109,6 +129,7 @@ var PF_I18N = {
       find_duplicate: 'Find duplicate (by key)',
       update_budgets: 'Update budgets',
       create_recurring: 'Create recurring transactions',
+      apply_auto_categorization: 'Apply auto-categorization',
       language: 'Language',
       lang_ru: 'Русский',
       lang_en: 'English'
@@ -123,7 +144,8 @@ var PF_I18N = {
       help: 'Help',
       import_raw: 'Import (Staging)',
       budgets: 'Budgets',
-      recurring_transactions: 'Recurring Transactions'
+      recurring_transactions: 'Recurring Transactions',
+      category_rules: 'Category Rules'
     },
     columns: {
       Date: 'Date',
@@ -155,7 +177,12 @@ var PF_I18N = {
       DayOfWeek: 'Day of Week',
       StartDate: 'Start Date',
       EndDate: 'End Date',
-      LastCreated: 'Last Created'
+      LastCreated: 'Last Created',
+      RuleName: 'Rule Name',
+      Pattern: 'Pattern',
+      PatternType: 'Pattern Type',
+      Priority: 'Priority',
+      ApplyTo: 'Apply To'
     },
     budget_status: {
       ok: 'OK',
@@ -167,6 +194,18 @@ var PF_I18N = {
       monthly: 'Monthly',
       quarterly: 'Quarterly',
       yearly: 'Yearly'
+    },
+    pattern_type: {
+      contains: 'Contains',
+      startsWith: 'Starts with',
+      endsWith: 'Ends with',
+      regex: 'Regular expression',
+      exact: 'Exact match'
+    },
+    rule_apply_to: {
+      merchant: 'Merchant only',
+      description: 'Description only',
+      both: 'Both fields'
     }
   }
 };

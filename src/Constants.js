@@ -111,3 +111,23 @@ var PF_RECURRING_FREQUENCY = {
   QUARTERLY: 'quarterly',
   YEARLY: 'yearly'
 };
+
+/**
+ * Pattern type values for category rules.
+ */
+var PF_PATTERN_TYPE = {
+  CONTAINS: 'contains',
+  STARTS_WITH: 'startsWith',
+  ENDS_WITH: 'endsWith',
+  REGEX: 'regex',
+  EXACT: 'exact'
+};
+
+/**
+ * Rule apply-to values (which fields to check).
+ */
+var PF_RULE_APPLY_TO = {
+  MERCHANT: 'merchant',
+  DESCRIPTION: 'description',
+  BOTH: 'both'
+};
