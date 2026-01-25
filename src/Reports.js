@@ -288,10 +288,7 @@ function pfInitializeReports_(ss) {
       var accountToCol = pfColumnLetter_(PF_TRANSACTIONS_SCHEMA, 'AccountTo');
       
       // Check if column indices are valid.
-      if (!accountNameColIdx || !initialBalanceColIdx) {
-        // If schema columns not found, skip account balances calculation.
-        return;
-      }
+      if (accountNameColIdx && initialBalanceColIdx) {
       
       var accountNameIdx = accountNameColIdx - 1; // Convert to 0-based
       var initialBalanceIdx = initialBalanceColIdx - 1; // Convert to 0-based
