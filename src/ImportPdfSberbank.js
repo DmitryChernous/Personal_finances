@@ -142,115 +142,116 @@ var PF_PDF_SBERBANK_PARSER = {
           }
           continue;
         }
-      
-      // Try to match full transaction line pattern
-      // Format: "31.12.2025 16:40 966521 Перевод СБП 1 500,00 96 776,18"
-      var transactionMatch = line.match(transactionLinePattern);
-      
-      if (transactionMatch) {
-        // This is a new transaction line
-        // Save previous transaction if exists
-        if (currentTransaction) {
-          transactions.push(currentTransaction);
-        }
         
-        var dateStr = transactionMatch[1]; // "31.12.2025"
-        var timeStr = transactionMatch[2]; // "16:40"
-        var authCode = transactionMatch[3]; // "966521"
-        var category = transactionMatch[4].trim(); // "Перевод СБП"
-        var amountStr = transactionMatch[5]; // "1 500,00"
-        var balanceStr = transactionMatch[6]; // "96 776,18" (not used, but good to have)
+        // Try to match full transaction line pattern
+        // Format: "31.12.2025 16:40 966521 Перевод СБП 1 500,00 96 776,18"
+        var transactionMatch = line.match(transactionLinePattern);
         
-        // Parse amount
-        var amountValue = this._parseAmount_(amountStr);
-        
-        // All transactions in Sberbank statements are expenses (debits)
-        // Income would be negative amount or specific keywords
-        var type = 'expense';
-        var categoryLower = category.toLowerCase();
-        if (amountValue < 0 || 
-            categoryLower.indexOf('зачислен') !== -1 || 
-            categoryLower.indexOf('пополнение') !== -1 ||
-            categoryLower.indexOf('возврат') !== -1) {
-          type = 'income';
-          amountValue = Math.abs(amountValue);
-        }
-        
-        // Start new transaction
-        currentTransaction = {
-          bank: 'sberbank',
-          date: dateStr,
-          time: timeStr,
-          authCode: authCode,
-          category: category,
-          amount: amountValue,
-          type: type,
-          description: [], // Will collect multi-line description
-          rawLine: line
-        };
-      } else {
-        // Check if this is a continuation line (has date but no time/code/amount)
-        var dateMatch = line.match(datePattern);
-        var amountMatch = line.match(amountPattern);
-        
-        if (currentTransaction) {
-          if (dateMatch && !amountMatch) {
-            // Line with date but no amount - continuation of description
-            // Remove date from beginning if present
-            var descLine = line;
-            if (dateMatch.index === 0) {
-              descLine = line.substring(dateMatch[0].length).trim();
-            }
-            if (descLine && descLine.length > 0) {
-              currentTransaction.description.push(descLine);
-            }
-          } else if (!dateMatch && !amountMatch) {
-            // Line without date or amount - continuation of description
-            if (line.length > 0) {
-              currentTransaction.description.push(line);
+        if (transactionMatch) {
+          // This is a new transaction line
+          // Save previous transaction if exists
+          if (currentTransaction) {
+            transactions.push(currentTransaction);
+          }
+          
+          var dateStr = transactionMatch[1]; // "31.12.2025"
+          var timeStr = transactionMatch[2]; // "16:40"
+          var authCode = transactionMatch[3]; // "966521"
+          var category = transactionMatch[4].trim(); // "Перевод СБП"
+          var amountStr = transactionMatch[5]; // "1 500,00"
+          var balanceStr = transactionMatch[6]; // "96 776,18" (not used, but good to have)
+          
+          // Parse amount
+          var amountValue = this._parseAmount_(amountStr);
+          
+          // All transactions in Sberbank statements are expenses (debits)
+          // Income would be negative amount or specific keywords
+          var type = 'expense';
+          var categoryLower = category.toLowerCase();
+          if (amountValue < 0 || 
+              categoryLower.indexOf('зачислен') !== -1 || 
+              categoryLower.indexOf('пополнение') !== -1 ||
+              categoryLower.indexOf('возврат') !== -1) {
+            type = 'income';
+            amountValue = Math.abs(amountValue);
+          }
+          
+          // Start new transaction
+          currentTransaction = {
+            bank: 'sberbank',
+            date: dateStr,
+            time: timeStr,
+            authCode: authCode,
+            category: category,
+            amount: amountValue,
+            type: type,
+            description: [], // Will collect multi-line description
+            rawLine: line
+          };
+        } else {
+          // Check if this is a continuation line (has date but no time/code/amount)
+          var dateMatch = line.match(datePattern);
+          var amountMatch = line.match(amountPattern);
+          
+          if (currentTransaction) {
+            if (dateMatch && !amountMatch) {
+              // Line with date but no amount - continuation of description
+              // Remove date from beginning if present
+              var descLine = line;
+              if (dateMatch.index === 0) {
+                descLine = line.substring(dateMatch[0].length).trim();
+              }
+              if (descLine && descLine.length > 0) {
+                currentTransaction.description.push(descLine);
+              }
+            } else if (!dateMatch && !amountMatch) {
+              // Line without date or amount - continuation of description
+              if (line.length > 0) {
+                currentTransaction.description.push(line);
+              }
+            } else if (dateMatch && amountMatch) {
+              // Has both date and amount but didn't match full pattern
+              // Might be a new transaction with different format
+              // Save current and try to parse this line as new transaction
+              transactions.push(currentTransaction);
+              currentTransaction = null;
+              
+              // Try to extract what we can
+              var dateStr2 = dateMatch[1];
+              var amountStr2 = amountMatch[1];
+              var amountValue2 = this._parseAmount_(amountStr2);
+              
+              currentTransaction = {
+                bank: 'sberbank',
+                date: dateStr2,
+                time: '',
+                authCode: '',
+                category: '',
+                amount: amountValue2,
+                type: 'expense',
+                description: [line],
+                rawLine: line
+              };
             }
           } else if (dateMatch && amountMatch) {
-            // Has both date and amount but didn't match full pattern
-            // Might be a new transaction with different format
-            // Save current and try to parse this line as new transaction
-            transactions.push(currentTransaction);
-            currentTransaction = null;
-            
-            // Try to extract what we can
-            var dateStr2 = dateMatch[1];
-            var amountStr2 = amountMatch[1];
-            var amountValue2 = this._parseAmount_(amountStr2);
+            // New transaction but format doesn't match full pattern
+            // Try to extract basic info
+            var dateStr3 = dateMatch[1];
+            var amountStr3 = amountMatch[1];
+            var amountValue3 = this._parseAmount_(amountStr3);
             
             currentTransaction = {
               bank: 'sberbank',
-              date: dateStr2,
+              date: dateStr3,
               time: '',
               authCode: '',
               category: '',
-              amount: amountValue2,
+              amount: amountValue3,
               type: 'expense',
               description: [line],
               rawLine: line
             };
           }
-        } else if (dateMatch && amountMatch) {
-          // New transaction but format doesn't match full pattern
-          // Try to extract basic info
-          var dateStr3 = dateMatch[1];
-          var amountStr3 = amountMatch[1];
-          var amountValue3 = this._parseAmount_(amountStr3);
-          
-          currentTransaction = {
-            bank: 'sberbank',
-            date: dateStr3,
-            time: '',
-            authCode: '',
-            category: '',
-            amount: amountValue3,
-            type: 'expense',
-            description: [line],
-            rawLine: line
-          };
         }
       }
       
