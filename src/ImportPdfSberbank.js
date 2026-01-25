@@ -164,11 +164,12 @@ var PF_PDF_SBERBANK_PARSER = {
           // Parse amount
           var amountValue = this._parseAmount_(amountStr);
           
-          // All transactions in Sberbank statements are expenses (debits)
-          // Income would be negative amount or specific keywords
+          // Determine transaction type
+          // Income indicators: "+" in category, "зачислен", "пополнение", "возврат", "заработная плата"
           var type = 'expense';
           var categoryLower = category.toLowerCase();
           if (amountValue < 0 || 
+              category.indexOf('+') !== -1 || // "+50", "+350" etc. indicates income
               categoryLower.indexOf('зачислен') !== -1 || 
               categoryLower.indexOf('пополнение') !== -1 ||
               categoryLower.indexOf('возврат') !== -1) {
@@ -316,7 +317,7 @@ var PF_PDF_SBERBANK_PARSER = {
     // Parse amount
     var amount = Math.abs(rawTransaction.amount || 0);
     
-    // Determine type
+    // Determine type - check description for income indicators
     var type = rawTransaction.type || 'expense';
     
     // Combine description lines (similar to CSV parser)
@@ -332,16 +333,46 @@ var PF_PDF_SBERBANK_PARSER = {
       description = rawTransaction.category;
     }
     
+    // Check description for income indicators (e.g., "Заработная плата")
+    var descriptionLower = description.toLowerCase();
+    if (type === 'expense' && (
+        descriptionLower.indexOf('заработная плата') !== -1 ||
+        descriptionLower.indexOf('зарплата') !== -1 ||
+        descriptionLower.indexOf('зачислен') !== -1)) {
+      type = 'income';
+    }
+    
     // Extract merchant from description (usually first part before "RUS" or "Операция")
     var merchant = '';
     if (description) {
-      var parts = description.split(/\.|RUS|Операция|операция/);
+      // Remove common patterns that are not merchant names
+      var cleanDesc = description
+        .replace(/по карте\s+\*\*\*\*\d+/gi, '') // Remove "по карте ****7426"
+        .replace(/\*\*\*\*\d+/g, '') // Remove "****7426"
+        .replace(/операция по карте/gi, '') // Remove "Операция по карте"
+        .trim();
+      
+      // Split by common delimiters
+      var parts = cleanDesc.split(/\.|RUS|Операция|операция/);
       if (parts.length > 0) {
         merchant = parts[0].trim();
         // Clean up merchant name
         merchant = merchant.replace(/[\.\-\s]{2,}/g, ' ').trim();
         // Remove quotes if present
         merchant = merchant.replace(/^["']|["']$/g, '');
+        // Remove trailing dots and spaces
+        merchant = merchant.replace(/\.+$/, '').trim();
+      }
+      
+      // If merchant is still empty or too short, try to extract from full description
+      if (!merchant || merchant.length < 3) {
+        // Try to find merchant name before "Операция" or "RUS"
+        var match = cleanDesc.match(/^(.+?)(?:\.\s*(?:RUS|Операция)|$)/i);
+        if (match && match[1]) {
+          merchant = match[1].trim();
+          merchant = merchant.replace(/[\.\-\s]{2,}/g, ' ').trim();
+          merchant = merchant.replace(/^["']|["']$/g, '');
+        }
       }
     }
     
@@ -349,19 +380,36 @@ var PF_PDF_SBERBANK_PARSER = {
     // Format: date + time + authCode (like CSV: date + time + authCode)
     var sourceId = '';
     if (rawTransaction.date && rawTransaction.time && rawTransaction.authCode) {
+      // Full format: date + time + authCode
       sourceId = rawTransaction.date.replace(/\./g, '') + 
                  rawTransaction.time.replace(/:/g, '') + 
                  rawTransaction.authCode;
     } else if (rawTransaction.date && rawTransaction.authCode) {
+      // Date + authCode (time might be missing)
       sourceId = rawTransaction.date.replace(/\./g, '') + rawTransaction.authCode;
     } else if (rawTransaction.date && rawTransaction.time) {
+      // Date + time (authCode might be missing)
       sourceId = rawTransaction.date.replace(/\./g, '') + rawTransaction.time.replace(/:/g, '');
     } else if (rawTransaction.date) {
-      sourceId = rawTransaction.date.replace(/\./g, '');
+      // Only date (fallback - should be rare)
+      // Try to add something unique from description or amount
+      var uniquePart = '';
+      if (rawTransaction.authCode) {
+        uniquePart = rawTransaction.authCode;
+      } else if (amount > 0) {
+        uniquePart = Math.round(amount).toString();
+      } else if (merchant) {
+        uniquePart = merchant.substring(0, 10).replace(/\s/g, '');
+      }
+      sourceId = rawTransaction.date.replace(/\./g, '') + (uniquePart || '000000');
     }
+    
+    // Final fallback if still empty
     if (!sourceId) {
-      // Fallback: use date + amount + merchant
-      sourceId = (rawTransaction.date || '') + '_' + amount + '_' + (merchant || description.substring(0, 20));
+      // Use date + amount + merchant (last resort)
+      sourceId = (rawTransaction.date || '00000000').replace(/\./g, '') + '_' + 
+                 Math.round(amount) + '_' + 
+                 (merchant || description.substring(0, 10) || 'unknown').replace(/\s/g, '');
     }
     
     var transaction = {
