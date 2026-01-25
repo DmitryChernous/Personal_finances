@@ -14,7 +14,7 @@ function pfShowQuickEntry() {
   var lang = pfGetLanguage_();
   var title = lang === 'en' ? 'Quick Transaction Entry' : 'Быстрый ввод транзакции';
   
-  var html = HtmlService.createHtmlOutputFromFile('QuickEntry')
+  var html = HtmlService.createHtmlOutputFromFile('QuickEntryUI')
     .setTitle(title)
     .setWidth(400);
   SpreadsheetApp.getUi().showSidebar(html);

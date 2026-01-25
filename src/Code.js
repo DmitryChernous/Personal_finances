@@ -16,7 +16,6 @@ function onOpen() {
   menu.addItem(pfT_('menu.create_recurring'), 'pfCreateRecurringTransactions');
   menu.addItem(pfT_('menu.apply_auto_categorization'), 'pfApplyAutoCategorizationToAll');
   menu.addSeparator();
-  menu.addItem(pfT_('menu.quick_entry'), 'pfShowQuickEntry');
   menu.addItem(pfT_('menu.import_transactions'), 'pfImportTransactions');
   menu.addItem(pfT_('menu.find_duplicate'), 'pfFindDuplicateByKey');
   menu.addSeparator();
