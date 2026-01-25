@@ -387,36 +387,22 @@
       };
       var batchSize = 200;
       var processed = 0;
-      var batchIndex = 0;
+      var existingKeys = null; // Store deduplication keys across batches
+      var timeoutId = null;
       
       // Store total count in options for server-side function
       options._totalCount = totalCount;
       
       function processNextBatch() {
+        // Clear any existing timeout
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+          timeoutId = null;
+        }
+        
         if (processed >= totalCount) {
           // All processed, write preview
-          updateProgress('Запись предпросмотра в таблицу...', 90);
-          google.script.run
-            .withSuccessHandler(function(preview) {
-              hideProgress();
-              previewData = preview;
-              preview.stats.total = allTransactions.length;
-              preview.stats.valid = totalStats.valid;
-              preview.stats.needsReview = totalStats.needsReview;
-              preview.stats.duplicates = totalStats.duplicates;
-              showStats(preview.stats);
-              document.getElementById('message').innerHTML = 
-                '<div class="success">Предпросмотр готов. Проверьте лист "' + preview.stagingSheetName + '"</div>';
-              document.getElementById('previewBtn').disabled = false;
-              document.getElementById('commitBtn').disabled = false;
-              document.getElementById('commitWithReviewBtn').disabled = false;
-            })
-            .withFailureHandler(function(error) {
-              hideProgress();
-              showError('Ошибка при создании предпросмотра: ' + (error.message || error.toString()));
-              document.getElementById('previewBtn').disabled = false;
-            })
-            .pfWritePreview(JSON.stringify(allTransactions));
+          writePreview();
           return;
         }
         
@@ -430,12 +416,27 @@
         var batchData = rawData.slice(processed, batchEnd);
         
         // Process batch - pass only the batch data, not entire array
-        // Also pass current processed count so server knows the offset
+        // Also pass current processed count and existing keys so server knows the offset
         var batchOptions = Object.assign({}, options);
         batchOptions._startIndex = processed;
+        if (existingKeys) {
+          batchOptions._existingKeys = existingKeys;
+        }
+        
+        // Set timeout (5 minutes)
+        timeoutId = setTimeout(function() {
+          hideProgress();
+          showError('Таймаут при обработке (5 минут). Попробуйте уменьшить размер файла или разбить его на части.');
+          document.getElementById('previewBtn').disabled = false;
+        }, 300000);
         
         google.script.run
           .withSuccessHandler(function(batchResult) {
+            if (timeoutId) {
+              clearTimeout(timeoutId);
+              timeoutId = null;
+            }
+            
             allTransactions = allTransactions.concat(batchResult.transactions);
             totalStats.valid += batchResult.stats.valid;
             totalStats.needsReview += batchResult.stats.needsReview;
@@ -443,41 +444,60 @@
             totalStats.errors += batchResult.stats.errors;
             processed = batchResult.processed;
             
+            // Update existing keys for next batch
+            if (batchResult.existingKeys) {
+              existingKeys = batchResult.existingKeys;
+            }
+            
             // Continue with next batch
             if (batchResult.hasMore) {
               setTimeout(processNextBatch, 50); // Small delay to allow UI update
             } else {
               // All processed, write preview
-              updateProgress('Запись предпросмотра в таблицу...', 90);
-              google.script.run
-                .withSuccessHandler(function(preview) {
-                  hideProgress();
-                  previewData = preview;
-                  preview.stats.total = allTransactions.length;
-                  preview.stats.valid = totalStats.valid;
-                  preview.stats.needsReview = totalStats.needsReview;
-                  preview.stats.duplicates = totalStats.duplicates;
-                  showStats(preview.stats);
-                  document.getElementById('message').innerHTML = 
-                    '<div class="success">Предпросмотр готов. Проверьте лист "' + preview.stagingSheetName + '"</div>';
-                  document.getElementById('previewBtn').disabled = false;
-                  document.getElementById('commitBtn').disabled = false;
-                  document.getElementById('commitWithReviewBtn').disabled = false;
-                })
-                .withFailureHandler(function(error) {
-                  hideProgress();
-                  showError('Ошибка при создании предпросмотра: ' + (error.message || error.toString()));
-                  document.getElementById('previewBtn').disabled = false;
-                })
-                .pfWritePreview(JSON.stringify(allTransactions));
+              writePreview();
             }
           })
           .withFailureHandler(function(error) {
+            if (timeoutId) {
+              clearTimeout(timeoutId);
+              timeoutId = null;
+            }
             hideProgress();
-            showError('Ошибка при обработке данных (строка ' + (processed + 1) + '): ' + (error.message || error.toString()));
+            console.error('Batch processing error:', error);
+            var errorMsg = 'Ошибка при обработке данных (строка ' + (processed + 1) + '): ' + 
+                          (error.message || error.toString());
+            if (error.stack) {
+              errorMsg += '\nДетали: ' + error.stack.substring(0, 200);
+            }
+            showError(errorMsg);
             document.getElementById('previewBtn').disabled = false;
           })
           .pfProcessDataBatch(JSON.stringify(batchData), importerType, batchOptions, batchSize, processed);
+      }
+      
+      function writePreview() {
+        updateProgress('Запись предпросмотра в таблицу...', 90);
+        google.script.run
+          .withSuccessHandler(function(preview) {
+            hideProgress();
+            previewData = preview;
+            preview.stats.total = allTransactions.length;
+            preview.stats.valid = totalStats.valid;
+            preview.stats.needsReview = totalStats.needsReview;
+            preview.stats.duplicates = totalStats.duplicates;
+            showStats(preview.stats);
+            document.getElementById('message').innerHTML = 
+              '<div class="success">Предпросмотр готов. Проверьте лист "' + preview.stagingSheetName + '"</div>';
+            document.getElementById('previewBtn').disabled = false;
+            document.getElementById('commitBtn').disabled = false;
+            document.getElementById('commitWithReviewBtn').disabled = false;
+          })
+          .withFailureHandler(function(error) {
+            hideProgress();
+            showError('Ошибка при создании предпросмотра: ' + (error.message || error.toString()));
+            document.getElementById('previewBtn').disabled = false;
+          })
+          .pfWritePreview(JSON.stringify(allTransactions));
       }
       
       // Start processing

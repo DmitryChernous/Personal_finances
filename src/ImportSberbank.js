@@ -74,7 +74,7 @@ var PF_SBERBANK_IMPORTER = {
         // Skip empty lines and page breaks
         if (line === '' || 
             line.indexOf('Продолжение на следующей странице') !== -1 ||
-            line.indexOf('Страница') !== -1 && line.indexOf('из') !== -1) {
+            (line.indexOf('Страница') !== -1 && line.indexOf('из') !== -1)) {
           continue;
         }
         
@@ -89,43 +89,43 @@ var PF_SBERBANK_IMPORTER = {
           }
           break;
         }
-      
-      // Parse CSV line (handle quoted fields)
-      var fields = this._parseCSVLine_(line, ',');
-      
-      // Check if this is a new transaction (has date in first column and amount in column 5)
-      var hasDate = fields.length > 0 && this._isDate_(fields[0]);
-      var hasAmount = fields.length > 4 && fields[4] && fields[4].trim() !== '';
-      
-      if (hasDate && hasAmount) {
-        // Save previous transaction if exists
-        if (currentTransaction) {
-          transactions.push(currentTransaction);
-        }
         
-        // Start new transaction
-        currentTransaction = {
-          date: fields[0] || '',
-          time: fields[1] || '',
-          authCode: fields[2] || '',
-          category: fields[3] || '', // Category is in column 4
-          amount: fields[4] || '',
-          balance: fields[5] || '',
-          description: [] // Will collect multi-line description
-        };
-      } else if (currentTransaction && hasDate && !hasAmount) {
-        // Line with date but no amount - continuation of description
-        // Description is in column 4 (index 3)
-        if (fields.length > 3 && fields[3] && fields[3].trim() !== '') {
-          currentTransaction.description.push(fields[3].trim());
+        // Parse CSV line (handle quoted fields) - ВНУТРИ ЦИКЛА
+        var fields = this._parseCSVLine_(line, ',');
+        
+        // Check if this is a new transaction (has date in first column and amount in column 5)
+        var hasDate = fields.length > 0 && this._isDate_(fields[0]);
+        var hasAmount = fields.length > 4 && fields[4] && fields[4].trim() !== '';
+        
+        if (hasDate && hasAmount) {
+          // Save previous transaction if exists
+          if (currentTransaction) {
+            transactions.push(currentTransaction);
+          }
+          
+          // Start new transaction
+          currentTransaction = {
+            date: fields[0] || '',
+            time: fields[1] || '',
+            authCode: fields[2] || '',
+            category: fields[3] || '', // Category is in column 4
+            amount: fields[4] || '',
+            balance: fields[5] || '',
+            description: [] // Will collect multi-line description
+          };
+        } else if (currentTransaction && hasDate && !hasAmount) {
+          // Line with date but no amount - continuation of description
+          // Description is in column 4 (index 3)
+          if (fields.length > 3 && fields[3] && fields[3].trim() !== '') {
+            currentTransaction.description.push(fields[3].trim());
+          }
+        } else if (currentTransaction && !hasDate) {
+          // Line without date - continuation of description
+          // Description is in column 4 (index 3)
+          if (fields.length > 3 && fields[3] && fields[3].trim() !== '') {
+            currentTransaction.description.push(fields[3].trim());
+          }
         }
-      } else if (currentTransaction && !hasDate) {
-        // Line without date - continuation of description
-        // Description is in column 4 (index 3)
-        if (fields.length > 3 && fields[3] && fields[3].trim() !== '') {
-          currentTransaction.description.push(fields[3].trim());
-        }
-      }
       }
       
       // Don't forget last transaction from this section

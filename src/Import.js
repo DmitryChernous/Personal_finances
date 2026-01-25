@@ -453,9 +453,17 @@ function pfCommitImport_(includeNeedsReview) {
  * @returns {Object} {importerType: string, detected: boolean}
  */
 function pfDetectFileFormat(fileContent) {
-  if (typeof PF_SBERBANK_IMPORTER !== 'undefined' && PF_SBERBANK_IMPORTER.detect(fileContent)) {
+  // Валидация входных данных
+  if (!fileContent || typeof fileContent !== 'string') {
+    throw new Error('fileContent must be a non-empty string');
+  }
+  
+  // Ограничение размера для проверки (первые 100KB достаточно для определения формата)
+  var checkContent = fileContent.length > 100000 ? fileContent.substring(0, 100000) : fileContent;
+  
+  if (typeof PF_SBERBANK_IMPORTER !== 'undefined' && PF_SBERBANK_IMPORTER.detect(checkContent)) {
     return { importerType: 'sberbank', detected: true };
-  } else if (PF_CSV_IMPORTER.detect(fileContent)) {
+  } else if (PF_CSV_IMPORTER.detect(checkContent)) {
     return { importerType: 'csv', detected: true };
   }
   return { importerType: null, detected: false };
@@ -470,6 +478,20 @@ function pfDetectFileFormat(fileContent) {
  * @returns {Object} {rawData: Array, count: number, errors: Array}
  */
 function pfParseFileContent(fileContent, importerType, options) {
+  // Валидация входных данных
+  if (!fileContent || typeof fileContent !== 'string') {
+    throw new Error('fileContent must be a non-empty string');
+  }
+  if (!importerType || !['sberbank', 'csv'].includes(importerType)) {
+    throw new Error('Invalid importerType: ' + importerType);
+  }
+  
+  // Ограничение размера файла (50MB)
+  var maxSize = 50 * 1024 * 1024; // 50MB
+  if (fileContent.length > maxSize) {
+    throw new Error('File too large: ' + Math.round(fileContent.length / 1024 / 1024) + 'MB. Maximum is 50MB.');
+  }
+  
   options = options || {};
   var importer = null;
   
@@ -491,6 +513,11 @@ function pfParseFileContent(fileContent, importerType, options) {
     throw new Error('Ошибка при парсинге файла: ' + (parseError.message || parseError.toString()));
   }
   
+  // Валидация результата
+  if (!Array.isArray(rawData)) {
+    throw new Error('Parser returned invalid data: expected array, got ' + typeof rawData);
+  }
+  
   return {
     rawData: rawData,
     count: rawData.length,
@@ -510,13 +537,34 @@ function pfParseFileContent(fileContent, importerType, options) {
  * @returns {Object} {transactions: Array, stats: Object, processed: number, total: number, hasMore: boolean}
  */
 function pfProcessDataBatch(rawDataJson, importerType, options, batchSize, startIndex) {
-  // Parse JSON string back to array
-  // Note: rawDataJson now contains only the batch data, not the entire array
-  var rawData = JSON.parse(rawDataJson);
+  // Валидация входных данных
+  if (!rawDataJson || typeof rawDataJson !== 'string') {
+    throw new Error('rawDataJson must be a non-empty string');
+  }
+  if (!importerType || !['sberbank', 'csv'].includes(importerType)) {
+    throw new Error('Invalid importerType: ' + importerType);
+  }
   batchSize = batchSize || 100;
-  startIndex = startIndex || 0; // Should be 0 since we pass only batch data
+  if (batchSize < 1 || batchSize > 1000) {
+    throw new Error('batchSize must be between 1 and 1000');
+  }
+  startIndex = startIndex || 0;
   options = options || {};
   
+  // Parse JSON string back to array
+  // Note: rawDataJson now contains only the batch data, not the entire array
+  var rawData = null;
+  try {
+    rawData = JSON.parse(rawDataJson);
+  } catch (e) {
+    throw new Error('Invalid JSON in rawDataJson: ' + e.toString());
+  }
+  
+  if (!Array.isArray(rawData)) {
+    throw new Error('rawData must be an array');
+  }
+  
+  // Get importer
   var importer = null;
   if (importerType === 'sberbank') {
     importer = PF_SBERBANK_IMPORTER;
@@ -535,20 +583,14 @@ function pfProcessDataBatch(rawDataJson, importerType, options, batchSize, start
     errors: 0
   };
   
-  // Get existing keys only once (cache it in ScriptProperties for persistence across calls)
+  // Get existing keys - use from options if provided (passed from client), otherwise load once
   var existingKeys = null;
-  var cacheKey = 'pf_import_existing_keys';
-  var cachedKeys = PropertiesService.getScriptProperties().getProperty(cacheKey);
-  if (cachedKeys) {
-    try {
-      existingKeys = JSON.parse(cachedKeys);
-    } catch (e) {
-      existingKeys = pfGetExistingTransactionKeys_();
-      PropertiesService.getScriptProperties().setProperty(cacheKey, JSON.stringify(existingKeys));
-    }
+  if (options._existingKeys && typeof options._existingKeys === 'object') {
+    // Use keys passed from client (updated after each batch)
+    existingKeys = options._existingKeys;
   } else {
+    // Load keys only on first batch
     existingKeys = pfGetExistingTransactionKeys_();
-    PropertiesService.getScriptProperties().setProperty(cacheKey, JSON.stringify(existingKeys));
   }
   
   // Process all items in the batch (rawData is already the batch)
@@ -589,9 +631,6 @@ function pfProcessDataBatch(rawDataJson, importerType, options, batchSize, start
     }
   }
   
-  // Update cache
-  PropertiesService.getScriptProperties().setProperty(cacheKey, JSON.stringify(existingKeys));
-  
   // Calculate processed count (startIndex + batch length)
   var processed = (options._startIndex || startIndex) + rawData.length;
   var totalCount = options._totalCount || rawData.length;
@@ -601,7 +640,8 @@ function pfProcessDataBatch(rawDataJson, importerType, options, batchSize, start
     stats: stats,
     processed: processed,
     total: totalCount,
-    hasMore: processed < totalCount
+    hasMore: processed < totalCount,
+    existingKeys: existingKeys // Return updated keys for next batch
   };
 }
 
@@ -613,8 +653,28 @@ function pfProcessDataBatch(rawDataJson, importerType, options, batchSize, start
  * @returns {Object} Preview result
  */
 function pfWritePreview(transactionsJson) {
+  // Валидация входных данных
+  if (!transactionsJson || typeof transactionsJson !== 'string') {
+    throw new Error('transactionsJson must be a non-empty string');
+  }
+  
   // Parse JSON string back to array
-  var transactions = JSON.parse(transactionsJson);
+  var transactions = null;
+  try {
+    transactions = JSON.parse(transactionsJson);
+  } catch (e) {
+    throw new Error('Invalid JSON in transactionsJson: ' + e.toString());
+  }
+  
+  if (!Array.isArray(transactions)) {
+    throw new Error('transactions must be an array');
+  }
+  
+  // Ограничение размера для безопасности
+  if (transactions.length > 10000) {
+    throw new Error('Too many transactions: ' + transactions.length + '. Maximum is 10000.');
+  }
+  
   return pfPreviewImport_(transactions);
 }
 
