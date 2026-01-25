@@ -448,10 +448,11 @@ function pfCommitImport_(includeNeedsReview) {
 
 /**
  * Step 1: Detect file format and return importer info.
+ * Public function for HTML Service.
  * @param {string} fileContent - File content as string
  * @returns {Object} {importerType: string, detected: boolean}
  */
-function pfDetectFileFormat_(fileContent) {
+function pfDetectFileFormat(fileContent) {
   if (typeof PF_SBERBANK_IMPORTER !== 'undefined' && PF_SBERBANK_IMPORTER.detect(fileContent)) {
     return { importerType: 'sberbank', detected: true };
   } else if (PF_CSV_IMPORTER.detect(fileContent)) {
@@ -462,12 +463,13 @@ function pfDetectFileFormat_(fileContent) {
 
 /**
  * Step 2: Parse file content.
+ * Public function for HTML Service.
  * @param {string} fileContent - File content as string
  * @param {string} importerType - 'sberbank' or 'csv'
  * @param {Object} options - Parse options
  * @returns {Object} {rawData: Array, count: number, errors: Array}
  */
-function pfParseFileContent_(fileContent, importerType, options) {
+function pfParseFileContent(fileContent, importerType, options) {
   options = options || {};
   var importer = null;
   
@@ -498,14 +500,18 @@ function pfParseFileContent_(fileContent, importerType, options) {
 
 /**
  * Step 3: Process raw data in batches with progress tracking.
- * @param {Array<Object>} rawData - Raw data from parser
+ * Public function for HTML Service.
+ * Note: rawData is passed as JSON string to avoid size limits.
+ * @param {string} rawDataJson - Raw data as JSON string
  * @param {string} importerType - 'sberbank' or 'csv'
  * @param {Object} options - Processing options
  * @param {number} batchSize - Number of items to process per batch (default: 100)
  * @param {number} startIndex - Start index for this batch (default: 0)
  * @returns {Object} {transactions: Array, stats: Object, processed: number, total: number, hasMore: boolean}
  */
-function pfProcessDataBatch_(rawData, importerType, options, batchSize, startIndex) {
+function pfProcessDataBatch(rawDataJson, importerType, options, batchSize, startIndex) {
+  // Parse JSON string back to array
+  var rawData = JSON.parse(rawDataJson);
   batchSize = batchSize || 100;
   startIndex = startIndex || 0;
   options = options || {};
@@ -583,10 +589,14 @@ function pfProcessDataBatch_(rawData, importerType, options, batchSize, startInd
 
 /**
  * Step 4: Write preview to staging sheet.
- * @param {Array<TransactionDTO>} transactions - All processed transactions
+ * Public function for HTML Service.
+ * Note: transactions is passed as JSON string to avoid size limits.
+ * @param {string} transactionsJson - Transactions as JSON string
  * @returns {Object} Preview result
  */
-function pfWritePreview_(transactions) {
+function pfWritePreview(transactionsJson) {
+  // Parse JSON string back to array
+  var transactions = JSON.parse(transactionsJson);
   return pfPreviewImport_(transactions);
 }
 
@@ -601,13 +611,13 @@ function pfProcessFileImport_(fileContent, options) {
   
   try {
     // Step 1: Detect format
-    var formatInfo = pfDetectFileFormat_(fileContent);
+    var formatInfo = pfDetectFileFormat(fileContent);
     if (!formatInfo.detected) {
       throw new Error('Формат файла не поддерживается. Используйте CSV файл или выписку Сбербанка.');
     }
     
     // Step 2: Parse
-    var parseResult = pfParseFileContent_(fileContent, formatInfo.importerType, options);
+    var parseResult = pfParseFileContent(fileContent, formatInfo.importerType, options);
     if (parseResult.count === 0) {
       throw new Error('Файл пуст или не содержит данных для импорта');
     }
@@ -624,8 +634,8 @@ function pfProcessFileImport_(fileContent, options) {
     var batchSize = 200; // Process 200 at a time
     var processed = 0;
     
-    while (processed < parseResult.rawData.length) {
-      var batchResult = pfProcessDataBatch_(parseResult.rawData, formatInfo.importerType, options, batchSize, processed);
+        while (processed < parseResult.rawData.length) {
+      var batchResult = pfProcessDataBatch(JSON.stringify(parseResult.rawData), formatInfo.importerType, options, batchSize, processed);
       allTransactions = allTransactions.concat(batchResult.transactions);
       totalStats.valid += batchResult.stats.valid;
       totalStats.needsReview += batchResult.stats.needsReview;
@@ -639,7 +649,7 @@ function pfProcessFileImport_(fileContent, options) {
     }
     
     // Step 4: Preview
-    var preview = pfWritePreview_(allTransactions);
+    var preview = pfWritePreview(JSON.stringify(allTransactions));
     preview.stats.total = allTransactions.length;
     preview.stats.valid = totalStats.valid;
     preview.stats.needsReview = totalStats.needsReview;

@@ -364,14 +364,14 @@
               showError('Ошибка при парсинге файла: ' + (error.message || error.toString()));
               document.getElementById('previewBtn').disabled = false;
             })
-            .pfParseFileContent_(fileContent, formatInfo.importerType, options);
+            .pfParseFileContent(fileContent, formatInfo.importerType, options);
         })
         .withFailureHandler(function(error) {
           hideProgress();
           showError('Ошибка при определении формата: ' + (error.message || error.toString()));
           document.getElementById('previewBtn').disabled = false;
         })
-        .pfDetectFileFormat_(fileContent);
+        .pfDetectFileFormat(fileContent);
     }
     
     /**
@@ -413,7 +413,7 @@
               showError('Ошибка при создании предпросмотра: ' + (error.message || error.toString()));
               document.getElementById('previewBtn').disabled = false;
             })
-            .pfWritePreview_(allTransactions);
+            .pfWritePreview(JSON.stringify(allTransactions));
           return;
         }
         
@@ -440,7 +440,7 @@
             showError('Ошибка при обработке данных (строка ' + (processed + 1) + '): ' + (error.message || error.toString()));
             document.getElementById('previewBtn').disabled = false;
           })
-          .pfProcessDataBatch_(rawData, importerType, options, batchSize, processed);
+          .pfProcessDataBatch(JSON.stringify(rawData), importerType, options, batchSize, processed);
       }
       
       // Start processing
