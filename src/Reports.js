@@ -200,13 +200,62 @@ function pfInitializeReports_(ss) {
     reportsSheet.getRange(row + 1, 4).setValue('Итого');
   }
 
-  // QUERY to get monthly aggregation for last 12 months.
-  // This is complex - for now, we'll use a simpler approach: generate via helper formulas or leave for future enhancement.
-  // Placeholder: user can filter Transactions sheet by month manually or we implement this later.
-  if (lang === 'en') {
-    reportsSheet.getRange(row + 2, 1).setValue('(Use Transactions sheet filter by month)');
-  } else {
-    reportsSheet.getRange(row + 2, 1).setValue('(Используйте фильтр листа Транзакции по месяцам)');
+  // Monthly cashflow for last 12 months - use script-based calculation.
+  var txSheet = pfFindSheetByKey_(ss, PF_SHEET_KEYS.TRANSACTIONS);
+  if (txSheet && txSheet.getLastRow() > 1) {
+    var today = new Date();
+    var monthlyData = [];
+    
+    // Calculate for last 12 months (including current month).
+    for (var monthOffset = 11; monthOffset >= 0; monthOffset--) {
+      var targetDate = new Date(today.getFullYear(), today.getMonth() - monthOffset, 1);
+      var monthStart = new Date(targetDate.getFullYear(), targetDate.getMonth(), 1);
+      var monthEnd = new Date(targetDate.getFullYear(), targetDate.getMonth() + 1, 0);
+      
+      var monthLabel = '';
+      if (lang === 'en') {
+        var monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        monthLabel = monthNames[targetDate.getMonth()] + ' ' + targetDate.getFullYear();
+      } else {
+        var monthNamesRu = ['Янв', 'Фев', 'Мар', 'Апр', 'Май', 'Июн', 'Июл', 'Авг', 'Сен', 'Окт', 'Ноя', 'Дек'];
+        monthLabel = monthNamesRu[targetDate.getMonth()] + ' ' + targetDate.getFullYear();
+      }
+      
+      var data = txSheet.getRange(2, 1, txSheet.getLastRow() - 1, PF_TRANSACTIONS_SCHEMA.columns.length).getValues();
+      var amountIdx = pfColumnIndex_(PF_TRANSACTIONS_SCHEMA, 'Amount') - 1;
+      var typeIdx = pfColumnIndex_(PF_TRANSACTIONS_SCHEMA, 'Type') - 1;
+      var statusIdx = pfColumnIndex_(PF_TRANSACTIONS_SCHEMA, 'Status') - 1;
+      var dateIdx = pfColumnIndex_(PF_TRANSACTIONS_SCHEMA, 'Date') - 1;
+      
+      var income = 0;
+      var expense = 0;
+      
+      for (var i = 0; i < data.length; i++) {
+        var rowData = data[i];
+        var date = rowData[dateIdx];
+        var type = rowData[typeIdx];
+        var status = rowData[statusIdx];
+        var amount = rowData[amountIdx];
+        
+        // Filter: current month, ok status, exclude transfers.
+        if (date && date >= monthStart && date <= monthEnd && status === 'ok' && type !== 'transfer') {
+          if (type === 'income') {
+            income += Number(amount) || 0;
+          } else if (type === 'expense') {
+            expense += Number(amount) || 0;
+          }
+        }
+      }
+      
+      var net = income - expense;
+      monthlyData.push([monthLabel, income, expense, net]);
+    }
+    
+    // Write monthly data.
+    if (monthlyData.length > 0) {
+      reportsSheet.getRange(row + 2, 1, monthlyData.length, 4).setValues(monthlyData);
+      reportsSheet.getRange(row + 2, 2, monthlyData.length, 3).setNumberFormat('#,##0.00');
+    }
   }
 
   row += 14; // Leave space for 12 months + header.
@@ -222,32 +271,72 @@ function pfInitializeReports_(ss) {
     reportsSheet.getRange(row + 1, 2).setValue('Остаток');
   }
 
-  // For account balances, we'd need to:
+  // Account balances calculation:
   // 1. Get initial balance from Accounts sheet
   // 2. Sum all income/expense transactions for that account
   // 3. Handle transfers (subtract from source, add to destination)
-  // This is complex, so for now we'll use a simple approach: sum income minus expenses per account.
   if (accountCol && amountCol && typeCol && statusCol) {
     var accountsSheet = pfFindSheetByKey_(ss, PF_SHEET_KEYS.ACCOUNTS);
     if (accountsSheet && accountsSheet.getLastRow() > 1) {
-      // Get list of accounts.
-      var accountsRange = accountsSheet.getRange(2, 1, accountsSheet.getLastRow() - 1, 1);
-      var accounts = accountsRange.getValues();
+      // Get accounts with initial balances.
+      var accountsDataRange = accountsSheet.getRange(2, 1, accountsSheet.getLastRow() - 1, PF_ACCOUNTS_SCHEMA.columns.length);
+      var accountsData = accountsDataRange.getValues();
+      var accountNameIdx = pfColumnIndex_(PF_ACCOUNTS_SCHEMA, 'Account') - 1;
+      var initialBalanceIdx = pfColumnIndex_(PF_ACCOUNTS_SCHEMA, 'InitialBalance') - 1;
+      var accountToCol = pfColumnLetter_(PF_TRANSACTIONS_SCHEMA, 'AccountTo');
       
-      // For each account, calculate balance: initial + income - expenses (excluding transfers).
-      // Place formula in row + 2, row + 3, etc.
-      var balanceRow = row + 2;
-      for (var i = 0; i < accounts.length && i < 20; i++) { // Limit to 20 accounts.
-        var accountName = accounts[i][0];
+      // Build a map of account names to initial balances.
+      var initialBalances = {};
+      for (var i = 0; i < accountsData.length; i++) {
+        var accountName = accountsData[i][accountNameIdx];
         if (!accountName || String(accountName).trim() === '') continue;
+        var initialBalance = accountsData[i][initialBalanceIdx];
+        initialBalances[String(accountName).trim()] = Number(initialBalance) || 0;
+      }
+      
+      // For each account, calculate balance using formula:
+      // Balance = InitialBalance + SUMIFS(income) - SUMIFS(expenses) 
+      //         - SUMIFS(transfers from this account) + SUMIFS(transfers to this account)
+      var balanceRow = row + 2;
+      var accountCount = 0;
+      for (var accountName in initialBalances) {
+        if (accountCount >= 20) break; // Limit to 20 accounts.
         
         reportsSheet.getRange(balanceRow, 1).setValue(accountName);
         
-        // Balance = InitialBalance (from Accounts) + SUMIFS(income) - SUMIFS(expenses) for this account.
-        // For now, just sum income - expenses (we'll add initial balance later if needed).
-        var accountBalanceFormula = '=SUMIFS(\'' + txSheetName + '\'!' + amountCol + '2:' + amountCol + ';\'' + txSheetName + '\'!' + accountCol + '2:' + accountCol + ';"' + accountName + '";\'' + txSheetName + '\'!' + typeCol + '2:' + typeCol + ';"income";\'' + txSheetName + '\'!' + statusCol + '2:' + statusCol + ';"ok")-SUMIFS(\'' + txSheetName + '\'!' + amountCol + '2:' + amountCol + ';\'' + txSheetName + '\'!' + accountCol + '2:' + accountCol + ';"' + accountName + '";\'' + txSheetName + '\'!' + typeCol + '2:' + typeCol + ';"expense";\'' + txSheetName + '\'!' + statusCol + '2:' + statusCol + ';"ok")';
+        // Get initial balance value (or 0 if not set).
+        var initialBalanceValue = initialBalances[accountName] || 0;
+        
+        // Income: SUMIFS for income transactions.
+        var incomePart = 'SUMIFS(\'' + txSheetName + '\'!' + amountCol + '2:' + amountCol + ';\'' + txSheetName + '\'!' + accountCol + '2:' + accountCol + ';"' + accountName + '";\'' + txSheetName + '\'!' + typeCol + '2:' + typeCol + ';"income";\'' + txSheetName + '\'!' + statusCol + '2:' + statusCol + ';"ok")';
+        
+        // Expenses: SUMIFS for expense transactions.
+        var expensePart = 'SUMIFS(\'' + txSheetName + '\'!' + amountCol + '2:' + amountCol + ';\'' + txSheetName + '\'!' + accountCol + '2:' + accountCol + ';"' + accountName + '";\'' + txSheetName + '\'!' + typeCol + '2:' + typeCol + ';"expense";\'' + txSheetName + '\'!' + statusCol + '2:' + statusCol + ';"ok")';
+        
+        // Transfers out: subtract when this account is the source.
+        var transfersOutPart = '';
+        if (accountToCol) {
+          transfersOutPart = 'SUMIFS(\'' + txSheetName + '\'!' + amountCol + '2:' + amountCol + ';\'' + txSheetName + '\'!' + accountCol + '2:' + accountCol + ';"' + accountName + '";\'' + txSheetName + '\'!' + typeCol + '2:' + typeCol + ';"transfer";\'' + txSheetName + '\'!' + statusCol + '2:' + statusCol + ';"ok")';
+        }
+        
+        // Transfers in: add when this account is the destination.
+        var transfersInPart = '';
+        if (accountToCol) {
+          transfersInPart = 'SUMIFS(\'' + txSheetName + '\'!' + amountCol + '2:' + amountCol + ';\'' + txSheetName + '\'!' + accountToCol + '2:' + accountToCol + ';"' + accountName + '";\'' + txSheetName + '\'!' + typeCol + '2:' + typeCol + ';"transfer";\'' + txSheetName + '\'!' + statusCol + '2:' + statusCol + ';"ok")';
+        }
+        
+        // Build final formula: InitialBalance + Income - Expenses - TransfersOut + TransfersIn
+        var accountBalanceFormula = '=' + initialBalanceValue + '+' + incomePart + '-' + expensePart;
+        if (transfersOutPart) {
+          accountBalanceFormula += '-' + transfersOutPart;
+        }
+        if (transfersInPart) {
+          accountBalanceFormula += '+' + transfersInPart;
+        }
+        
         reportsSheet.getRange(balanceRow, 2).setFormula(accountBalanceFormula);
         balanceRow++;
+        accountCount++;
       }
     }
   }
