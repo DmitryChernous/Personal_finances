@@ -88,22 +88,9 @@ function pfPrepareTemplate_(ss, keepDemoData) {
   if (txSheet) {
     var lastRow = txSheet.getLastRow();
     if (lastRow > 1) {
-      Logger.log('[TEMPLATE] Clearing ' + (lastRow - 1) + ' transaction rows');
       var rowsToDelete = lastRow - 1;
-      var lastCol = txSheet.getLastColumn();
-      
-      // Clear content, formatting, and notes
-      var clearRange = txSheet.getRange(2, 1, rowsToDelete, lastCol);
-      clearRange.clearContent();
-      clearRange.clearFormat();
-      clearRange.clearNote();
-      
-      // Delete rows
-      try {
-        txSheet.deleteRows(2, rowsToDelete);
-      } catch (e) {
-        Logger.log('[TEMPLATE] WARNING: Could not delete transaction rows: ' + e.toString());
-      }
+      Logger.log('[TEMPLATE] Clearing ' + rowsToDelete + ' transaction rows');
+      pfClearSheetRows_(txSheet, 2, rowsToDelete);
     }
   }
   
@@ -119,16 +106,8 @@ function pfPrepareTemplate_(ss, keepDemoData) {
         var demoAccountsToKeep = 3;
         if (lastRow > demoAccountsToKeep + 1) {
           var rowsToDelete = lastRow - demoAccountsToKeep - 1;
-          var lastCol = accountsSheet.getLastColumn();
-          var clearRange = accountsSheet.getRange(demoAccountsToKeep + 2, 1, rowsToDelete, lastCol);
-          clearRange.clearContent();
-          clearRange.clearFormat();
-          
-          try {
-            accountsSheet.deleteRows(demoAccountsToKeep + 2, rowsToDelete);
-          } catch (e) {
-            Logger.log('[TEMPLATE] WARNING: Could not delete account rows: ' + e.toString());
-          }
+          Logger.log('[TEMPLATE] Clearing ' + rowsToDelete + ' account rows (keeping ' + demoAccountsToKeep + ' demo)');
+          pfClearSheetRows_(accountsSheet, demoAccountsToKeep + 2, rowsToDelete);
         }
         
         // Reset demo accounts to default values
@@ -136,16 +115,8 @@ function pfPrepareTemplate_(ss, keepDemoData) {
       } else {
         // Clear all accounts
         var rowsToDelete = lastRow - 1;
-        var lastCol = accountsSheet.getLastColumn();
-        var clearRange = accountsSheet.getRange(2, 1, rowsToDelete, lastCol);
-        clearRange.clearContent();
-        clearRange.clearFormat();
-        
-        try {
-          accountsSheet.deleteRows(2, rowsToDelete);
-        } catch (e) {
-          Logger.log('[TEMPLATE] WARNING: Could not delete account rows: ' + e.toString());
-        }
+        Logger.log('[TEMPLATE] Clearing all ' + rowsToDelete + ' account rows');
+        pfClearSheetRows_(accountsSheet, 2, rowsToDelete);
       }
     } else if (keepDemoData) {
       // No accounts exist, create demo ones
@@ -182,16 +153,8 @@ function pfPrepareTemplate_(ss, keepDemoData) {
       } else {
         // Clear all categories
         var rowsToDelete = lastRow - 1;
-        var lastCol = categoriesSheet.getLastColumn();
-        var clearRange = categoriesSheet.getRange(2, 1, rowsToDelete, lastCol);
-        clearRange.clearContent();
-        clearRange.clearFormat();
-        
-        try {
-          categoriesSheet.deleteRows(2, rowsToDelete);
-        } catch (e) {
-          Logger.log('[TEMPLATE] WARNING: Could not delete category rows: ' + e.toString());
-        }
+        Logger.log('[TEMPLATE] Clearing all ' + rowsToDelete + ' category rows');
+        pfClearSheetRows_(categoriesSheet, 2, rowsToDelete);
       }
     } else if (keepDemoData) {
       // No categories exist, create demo ones
@@ -204,19 +167,9 @@ function pfPrepareTemplate_(ss, keepDemoData) {
   if (importRawSheet) {
     var lastRow = importRawSheet.getLastRow();
     if (lastRow > 1) {
-      Logger.log('[TEMPLATE] Clearing Import_Raw sheet');
       var rowsToDelete = lastRow - 1;
-      var lastCol = importRawSheet.getLastColumn();
-      var clearRange = importRawSheet.getRange(2, 1, rowsToDelete, lastCol);
-      clearRange.clearContent();
-      clearRange.clearFormat();
-      clearRange.clearNote();
-      
-      try {
-        importRawSheet.deleteRows(2, rowsToDelete);
-      } catch (e) {
-        Logger.log('[TEMPLATE] WARNING: Could not delete import rows: ' + e.toString());
-      }
+      Logger.log('[TEMPLATE] Clearing Import_Raw sheet: ' + rowsToDelete + ' rows');
+      pfClearSheetRows_(importRawSheet, 2, rowsToDelete);
     }
   }
   

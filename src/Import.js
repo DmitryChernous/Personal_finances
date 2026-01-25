@@ -413,32 +413,8 @@ function pfPreviewImport_(transactions) {
   if (lastRow > 1) {
     var rowsToDelete = lastRow - 1; // Exclude header row
     if (rowsToDelete > 0) {
-      var lastCol = stagingSheet.getLastColumn();
-      var clearRange = stagingSheet.getRange(2, 1, rowsToDelete, lastCol);
-      
-      try {
-        Logger.log('[SERVER] Clearing existing staging data: content, formatting, and notes for ' + rowsToDelete + ' rows');
-        // Clear everything: content, formatting, and notes
-        clearRange.clearContent();
-        clearRange.clearFormat();
-        clearRange.clearNote();
-        
-        // Now delete the rows
-        stagingSheet.deleteRows(2, rowsToDelete);
-        Logger.log('[SERVER] Successfully cleared and deleted existing staging rows');
-      } catch (e) {
-        Logger.log('[SERVER] WARNING: Could not delete rows: ' + e.toString());
-        // Try alternative: clear everything without deleting rows
-        try {
-          Logger.log('[SERVER] Falling back to clear-only (no delete)');
-          clearRange.clearContent();
-          clearRange.clearFormat();
-          clearRange.clearNote();
-          Logger.log('[SERVER] Successfully cleared existing staging content, formatting, and notes');
-        } catch (e2) {
-          Logger.log('[SERVER] WARNING: Could not clear staging: ' + e2.toString());
-        }
-      }
+      Logger.log('[SERVER] Clearing existing staging data: ' + rowsToDelete + ' rows');
+      pfClearSheetRows_(stagingSheet, 2, rowsToDelete);
     }
   }
   
@@ -812,32 +788,8 @@ function pfCommitImport_(includeNeedsReview) {
     if (stagingLastRow > 1) {
       var rowsToDelete = stagingLastRow - 1;
       if (rowsToDelete > 0) {
-        var lastCol = stagingSheet.getLastColumn();
-        var clearRange = stagingSheet.getRange(2, 1, rowsToDelete, lastCol);
-        
-        try {
-          Logger.log('[SERVER] Clearing staging sheet: content, formatting, and notes for ' + rowsToDelete + ' rows');
-          // Clear everything: content, formatting, and notes
-          clearRange.clearContent();
-          clearRange.clearFormat();
-          clearRange.clearNote();
-          
-          // Now delete the rows
-          stagingSheet.deleteRows(2, rowsToDelete);
-          Logger.log('[SERVER] Successfully cleared and deleted staging rows');
-        } catch (e) {
-          Logger.log('[SERVER] WARNING: Could not delete staging rows: ' + e.toString());
-          // Try alternative: just clear everything without deleting
-          try {
-            Logger.log('[SERVER] Falling back to clear-only (no delete)');
-            clearRange.clearContent();
-            clearRange.clearFormat();
-            clearRange.clearNote();
-            Logger.log('[SERVER] Successfully cleared staging content, formatting, and notes');
-          } catch (e2) {
-            Logger.log('[SERVER] WARNING: Could not clear staging: ' + e2.toString());
-          }
-        }
+        Logger.log('[SERVER] Clearing staging sheet: ' + rowsToDelete + ' rows');
+        pfClearSheetRows_(stagingSheet, 2, rowsToDelete);
       }
     }
     
