@@ -388,19 +388,35 @@ function pfPreviewImport_(transactions) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var stagingSheet = pfEnsureImportRawSheet_(ss);
   
-  // Clear existing staging data safely
+  // Clear existing staging data safely (content, formatting, and notes)
   var lastRow = stagingSheet.getLastRow();
   if (lastRow > 1) {
     var rowsToDelete = lastRow - 1; // Exclude header row
     if (rowsToDelete > 0) {
+      var lastCol = stagingSheet.getLastColumn();
+      var clearRange = stagingSheet.getRange(2, 1, rowsToDelete, lastCol);
+      
       try {
-        Logger.log('[SERVER] Deleting ' + rowsToDelete + ' existing rows from staging sheet');
+        Logger.log('[SERVER] Clearing existing staging data: content, formatting, and notes for ' + rowsToDelete + ' rows');
+        // Clear everything: content, formatting, and notes
+        clearRange.clearContent();
+        clearRange.clearFormat();
+        clearRange.clearNote();
+        
+        // Now delete the rows
         stagingSheet.deleteRows(2, rowsToDelete);
+        Logger.log('[SERVER] Successfully cleared and deleted existing staging rows');
       } catch (e) {
         Logger.log('[SERVER] WARNING: Could not delete rows: ' + e.toString());
-        // Try alternative: clear content instead of deleting rows
-        if (lastRow > 1) {
-          stagingSheet.getRange(2, 1, lastRow - 1, stagingSheet.getLastColumn()).clearContent();
+        // Try alternative: clear everything without deleting rows
+        try {
+          Logger.log('[SERVER] Falling back to clear-only (no delete)');
+          clearRange.clearContent();
+          clearRange.clearFormat();
+          clearRange.clearNote();
+          Logger.log('[SERVER] Successfully cleared existing staging content, formatting, and notes');
+        } catch (e2) {
+          Logger.log('[SERVER] WARNING: Could not clear staging: ' + e2.toString());
         }
       }
     }
@@ -788,21 +804,35 @@ function pfCommitImport_(includeNeedsReview) {
       Logger.log('[SERVER] No rows to add');
     }
     
-    // Clear staging sheet safely
+    // Clear staging sheet safely (content, formatting, and notes)
     var stagingLastRow = stagingSheet.getLastRow();
     if (stagingLastRow > 1) {
       var rowsToDelete = stagingLastRow - 1;
       if (rowsToDelete > 0) {
+        var lastCol = stagingSheet.getLastColumn();
+        var clearRange = stagingSheet.getRange(2, 1, rowsToDelete, lastCol);
+        
         try {
-          Logger.log('[SERVER] Clearing staging sheet: deleting ' + rowsToDelete + ' rows');
+          Logger.log('[SERVER] Clearing staging sheet: content, formatting, and notes for ' + rowsToDelete + ' rows');
+          // Clear everything: content, formatting, and notes
+          clearRange.clearContent();
+          clearRange.clearFormat();
+          clearRange.clearNote();
+          
+          // Now delete the rows
           stagingSheet.deleteRows(2, rowsToDelete);
+          Logger.log('[SERVER] Successfully cleared and deleted staging rows');
         } catch (e) {
           Logger.log('[SERVER] WARNING: Could not delete staging rows: ' + e.toString());
-          // Try alternative: clear content
+          // Try alternative: just clear everything without deleting
           try {
-            stagingSheet.getRange(2, 1, rowsToDelete, stagingSheet.getLastColumn()).clearContent();
+            Logger.log('[SERVER] Falling back to clear-only (no delete)');
+            clearRange.clearContent();
+            clearRange.clearFormat();
+            clearRange.clearNote();
+            Logger.log('[SERVER] Successfully cleared staging content, formatting, and notes');
           } catch (e2) {
-            Logger.log('[SERVER] WARNING: Could not clear staging content: ' + e2.toString());
+            Logger.log('[SERVER] WARNING: Could not clear staging: ' + e2.toString());
           }
         }
       }
