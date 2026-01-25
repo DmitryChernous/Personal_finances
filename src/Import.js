@@ -757,22 +757,26 @@ function pfCommitImport_(includeNeedsReview) {
         targetRange.setValues(rowsToAdd);
         Logger.log('[SERVER] Successfully wrote ' + rowsToAdd.length + ' rows to Transactions sheet');
         
-        // Normalize and validate added rows
-        Logger.log('[SERVER] Starting normalization and validation of ' + rowsToAdd.length + ' rows...');
-        for (var i = 0; i < rowsToAdd.length; i++) {
-          try {
-            if (i % 50 === 0 || i < 3) {
-              Logger.log('[SERVER] Normalizing/validating row ' + (lastRow + 1 + i));
+        // Skip normalization/validation for large imports to avoid timeout
+        // Data is already normalized during parsing in pfProcessDataBatch
+        // Validation will happen automatically via onEdit trigger when user edits rows
+        // For small imports (< 50 rows), we can still do it
+        if (rowsToAdd.length < 50) {
+          Logger.log('[SERVER] Small import (' + rowsToAdd.length + ' rows), running normalization/validation...');
+          for (var i = 0; i < rowsToAdd.length; i++) {
+            try {
+              pfNormalizeTransactionRow_(txSheet, lastRow + 1 + i);
+              var errors = pfValidateTransactionRow_(txSheet, lastRow + 1 + i);
+              pfHighlightErrors_(txSheet, lastRow + 1 + i, errors);
+            } catch (e) {
+              Logger.log('[SERVER] WARNING: Error normalizing/validating row ' + (lastRow + 1 + i) + ': ' + e.toString());
             }
-            pfNormalizeTransactionRow_(txSheet, lastRow + 1 + i);
-            var errors = pfValidateTransactionRow_(txSheet, lastRow + 1 + i);
-            pfHighlightErrors_(txSheet, lastRow + 1 + i, errors);
-          } catch (e) {
-            Logger.log('[SERVER] WARNING: Error normalizing/validating row ' + (lastRow + 1 + i) + ': ' + e.toString());
-            Logger.log('[SERVER] Error stack: ' + (e.stack || 'No stack'));
           }
+          Logger.log('[SERVER] Completed normalization and validation');
+        } else {
+          Logger.log('[SERVER] Large import (' + rowsToAdd.length + ' rows), skipping normalization/validation to avoid timeout');
+          Logger.log('[SERVER] Data is already normalized from parsing. Validation will occur via onEdit trigger when rows are edited.');
         }
-        Logger.log('[SERVER] Completed normalization and validation');
       } catch (e) {
         Logger.log('[SERVER] ERROR writing to Transactions sheet: ' + e.toString());
         Logger.log('[SERVER] Error stack: ' + (e.stack || 'No stack'));
