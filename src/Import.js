@@ -388,9 +388,22 @@ function pfPreviewImport_(transactions) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var stagingSheet = pfEnsureImportRawSheet_(ss);
   
-  // Clear existing staging data
-  if (stagingSheet.getLastRow() > 1) {
-    stagingSheet.deleteRows(2, stagingSheet.getLastRow() - 1);
+  // Clear existing staging data safely
+  var lastRow = stagingSheet.getLastRow();
+  if (lastRow > 1) {
+    var rowsToDelete = lastRow - 1; // Exclude header row
+    if (rowsToDelete > 0) {
+      try {
+        Logger.log('[SERVER] Deleting ' + rowsToDelete + ' existing rows from staging sheet');
+        stagingSheet.deleteRows(2, rowsToDelete);
+      } catch (e) {
+        Logger.log('[SERVER] WARNING: Could not delete rows: ' + e.toString());
+        // Try alternative: clear content instead of deleting rows
+        if (lastRow > 1) {
+          stagingSheet.getRange(2, 1, lastRow - 1, stagingSheet.getLastColumn()).clearContent();
+        }
+      }
+    }
   }
   
   // Write transactions to staging sheet

@@ -274,6 +274,19 @@
         return;
       }
       
+      // Check if there's already preview data
+      if (previewData) {
+        var confirmReplace = confirm('Уже есть данные предпросмотра. Заменить их новыми?');
+        if (!confirmReplace) {
+          return;
+        }
+        // Reset preview data
+        previewData = null;
+        document.getElementById('commitBtn').disabled = true;
+        document.getElementById('commitWithReviewBtn').disabled = true;
+        document.getElementById('stats').style.display = 'none';
+      }
+      
       document.getElementById('previewBtn').disabled = true;
       document.getElementById('message').innerHTML = '<div>Обработка файла...</div>';
       
