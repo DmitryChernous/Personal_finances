@@ -82,7 +82,160 @@ function pfInitializeDashboard_(ss) {
 
   row += 4;
 
-  // Section 2: Expenses by Category (Pie Chart).
+  // Section 2: Budget KPI and Exceeded Budgets.
+  var budgetsSheet = pfFindSheetByKey_(ss, PF_SHEET_KEYS.BUDGETS);
+  if (budgetsSheet) {
+    // Update budget calculations first to ensure data is current
+    try {
+      pfUpdateBudgetCalculations_(ss);
+    } catch (e) {
+      pfLogWarning_('Error updating budgets in Dashboard: ' + e.toString(), 'pfInitializeDashboard_');
+    }
+
+    // Get current month
+    var today = new Date();
+    var currentMonth = today.getFullYear() + '-' + 
+      String(today.getMonth() + 1).padStart(2, '0');
+
+    // Budget KPI section
+    if (lang === 'en') {
+      dashboardSheet.getRange(row, 1).setValue('Budget Metrics (Current Month)');
+      dashboardSheet.getRange(row + 1, 1).setValue('Exceeded Budgets');
+      dashboardSheet.getRange(row + 1, 2).setValue('Avg % Used');
+    } else {
+      dashboardSheet.getRange(row, 1).setValue('Показатели бюджетов (текущий месяц)');
+      dashboardSheet.getRange(row + 1, 1).setValue('Бюджетов превышено');
+      dashboardSheet.getRange(row + 1, 2).setValue('Средний % использования');
+    }
+
+    // Read budgets data
+    var budgetsLastRow = budgetsSheet.getLastRow();
+    var exceededCount = 0;
+    var totalPercentUsed = 0;
+    var activeBudgetCount = 0;
+    var exceededBudgets = [];
+
+    if (budgetsLastRow > 1) {
+      var budgetsData = budgetsSheet.getRange(2, 1, budgetsLastRow - 1, PF_BUDGETS_SCHEMA.columns.length)
+        .getValues();
+
+      // Get column indices
+      var categoryColIdx = pfColumnIndex_(PF_BUDGETS_SCHEMA, 'Category');
+      var subcategoryColIdx = pfColumnIndex_(PF_BUDGETS_SCHEMA, 'Subcategory');
+      var periodColIdx = pfColumnIndex_(PF_BUDGETS_SCHEMA, 'Period');
+      var periodValueColIdx = pfColumnIndex_(PF_BUDGETS_SCHEMA, 'PeriodValue');
+      var amountColIdx = pfColumnIndex_(PF_BUDGETS_SCHEMA, 'Amount');
+      var factColIdx = pfColumnIndex_(PF_BUDGETS_SCHEMA, 'Fact');
+      var statusColIdx = pfColumnIndex_(PF_BUDGETS_SCHEMA, 'Status');
+      var percentColIdx = pfColumnIndex_(PF_BUDGETS_SCHEMA, 'PercentUsed');
+      var activeColIdx = pfColumnIndex_(PF_BUDGETS_SCHEMA, 'Active');
+
+      if (categoryColIdx && periodColIdx && periodValueColIdx && amountColIdx && 
+          factColIdx && statusColIdx && percentColIdx) {
+        var categoryIdx = categoryColIdx - 1;
+        var subcategoryIdx = subcategoryColIdx ? subcategoryColIdx - 1 : -1;
+        var periodIdx = periodColIdx - 1;
+        var periodValueIdx = periodValueColIdx - 1;
+        var amountIdx = amountColIdx - 1;
+        var factIdx = factColIdx - 1;
+        var statusIdx = statusColIdx - 1;
+        var percentIdx = percentColIdx - 1;
+        var activeIdx = activeColIdx ? activeColIdx - 1 : -1;
+
+        for (var i = 0; i < budgetsData.length; i++) {
+          var rowData = budgetsData[i];
+
+          // Check array bounds
+          if (rowData.length <= categoryIdx || rowData.length <= periodIdx || 
+              rowData.length <= periodValueIdx || rowData.length <= amountIdx ||
+              rowData.length <= factIdx || rowData.length <= statusIdx || rowData.length <= percentIdx) {
+            continue;
+          }
+
+          // Check if active
+          var active = activeIdx >= 0 ? rowData[activeIdx] : true;
+          if (active === false || active === 'false' || active === 'FALSE' || String(active).trim() === '') {
+            continue;
+          }
+
+          var category = String(rowData[categoryIdx] || '').trim();
+          var subcategory = subcategoryIdx >= 0 ? String(rowData[subcategoryIdx] || '').trim() : '';
+          var period = String(rowData[periodIdx] || '').trim();
+          var periodValue = String(rowData[periodValueIdx] || '').trim();
+          var amount = Number(rowData[amountIdx]) || 0;
+          var fact = Number(rowData[factIdx]) || 0;
+          var status = String(rowData[statusIdx] || '').trim();
+          var percentUsed = Number(rowData[percentIdx]) || 0;
+
+          // Filter: current month, monthly period
+          if (!category || period !== PF_BUDGET_PERIOD.MONTH || periodValue !== currentMonth || amount <= 0) {
+            continue;
+          }
+
+          activeBudgetCount++;
+          totalPercentUsed += percentUsed;
+
+          // Check if exceeded
+          if (status === PF_BUDGET_STATUS.EXCEEDED) {
+            exceededCount++;
+            var categoryDisplay = category;
+            if (subcategory && subcategory !== '') {
+              categoryDisplay += ' / ' + subcategory;
+            }
+            var exceeded = fact - amount;
+            exceededBudgets.push([categoryDisplay, amount, fact, exceeded]);
+          }
+        }
+      }
+    }
+
+    // Write KPI values
+    dashboardSheet.getRange(row + 2, 1).setValue(exceededCount);
+    var avgPercentUsed = activeBudgetCount > 0 ? (totalPercentUsed / activeBudgetCount) : 0;
+    dashboardSheet.getRange(row + 2, 2).setValue(avgPercentUsed);
+
+    // Format KPI values
+    dashboardSheet.getRange(row + 2, 1).setNumberFormat('0');
+    dashboardSheet.getRange(row + 2, 2).setNumberFormat('0.00%');
+    dashboardSheet.getRange(row + 2, 1, 1, 2).setFontSize(14);
+    dashboardSheet.getRange(row + 2, 1, 1, 2).setFontWeight('bold');
+
+    row += 4;
+
+    // Exceeded budgets list
+    if (exceededBudgets.length > 0) {
+      if (lang === 'en') {
+        dashboardSheet.getRange(row, 1).setValue('Exceeded Budgets');
+        dashboardSheet.getRange(row + 1, 1).setValue('Category');
+        dashboardSheet.getRange(row + 1, 2).setValue('Plan');
+        dashboardSheet.getRange(row + 1, 3).setValue('Fact');
+        dashboardSheet.getRange(row + 1, 4).setValue('Exceeded');
+      } else {
+        dashboardSheet.getRange(row, 1).setValue('Превышенные бюджеты');
+        dashboardSheet.getRange(row + 1, 1).setValue('Категория');
+        dashboardSheet.getRange(row + 1, 2).setValue('План');
+        dashboardSheet.getRange(row + 1, 3).setValue('Факт');
+        dashboardSheet.getRange(row + 1, 4).setValue('Превышение');
+      }
+
+      dashboardSheet.getRange(row + 2, 1, exceededBudgets.length, 4).setValues(exceededBudgets);
+      dashboardSheet.getRange(row + 2, 2, exceededBudgets.length, 3).setNumberFormat('#,##0.00');
+      dashboardSheet.getRange(row + 2, 1, exceededBudgets.length, 4).setBackground('#ffcccc'); // Light red
+
+      row += exceededBudgets.length + 3;
+    } else {
+      if (lang === 'en') {
+        dashboardSheet.getRange(row, 1).setValue('Exceeded Budgets: None');
+      } else {
+        dashboardSheet.getRange(row, 1).setValue('Превышенные бюджеты: нет');
+      }
+      row += 3;
+    }
+  } else {
+    row += 3; // Minimal space if no budgets sheet
+  }
+
+  // Section 3: Expenses by Category (Pie Chart).
   if (lang === 'en') {
     dashboardSheet.getRange(row, 1).setValue('Expenses by Category (Current Month)');
   } else {
@@ -202,7 +355,7 @@ function pfInitializeDashboard_(ss) {
 
   row += 25; // Leave space for chart.
 
-  // Section 3: Monthly Trend (Line Chart) - Last 6 months.
+  // Section 4: Monthly Trend (Line Chart) - Last 6 months.
   if (lang === 'en') {
     dashboardSheet.getRange(row, 1).setValue('Monthly Trend (Last 6 Months)');
   } else {

@@ -70,6 +70,7 @@ function pfApplyLocalization_(ss) {
   pfFindOrCreateSheetByKey_(ss, PF_SHEET_KEYS.REPORTS);
   pfFindOrCreateSheetByKey_(ss, PF_SHEET_KEYS.DASHBOARD);
   pfFindOrCreateSheetByKey_(ss, PF_SHEET_KEYS.HELP);
+  pfFindOrCreateSheetByKey_(ss, PF_SHEET_KEYS.BUDGETS);
 
   // Headers for Transactions (first row).
   var txSheet = pfFindOrCreateSheetByKey_(ss, PF_SHEET_KEYS.TRANSACTIONS);
@@ -81,6 +82,9 @@ function pfApplyLocalization_(ss) {
 
   var categoriesSheet = pfFindOrCreateSheetByKey_(ss, PF_SHEET_KEYS.CATEGORIES);
   pfEnsureHeaderRow_(categoriesSheet, PF_CATEGORIES_SCHEMA);
+
+  var budgetsSheet = pfFindOrCreateSheetByKey_(ss, PF_SHEET_KEYS.BUDGETS);
+  pfEnsureHeaderRow_(budgetsSheet, PF_BUDGETS_SCHEMA);
 }
 
 /**

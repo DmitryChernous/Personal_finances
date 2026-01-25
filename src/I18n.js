@@ -22,7 +22,8 @@ var PF_SHEET_KEYS = {
   REPORTS: 'reports',
   DASHBOARD: 'dashboard',
   HELP: 'help',
-  IMPORT_RAW: 'import_raw'
+  IMPORT_RAW: 'import_raw',
+  BUDGETS: 'budgets'
 };
 
 var PF_I18N = {
@@ -38,6 +39,7 @@ var PF_I18N = {
       import_transactions: 'Импорт транзакций',
       create_template: 'Создать шаблон',
       find_duplicate: 'Найти дубликат (по ключу)',
+      update_budgets: 'Обновить бюджеты',
       language: 'Язык',
       lang_ru: 'Русский',
       lang_en: 'English'
@@ -50,7 +52,8 @@ var PF_I18N = {
       reports: 'Отчеты',
       dashboard: 'Дашборд',
       help: 'Инструкция',
-      import_raw: 'Импорт (черновик)'
+      import_raw: 'Импорт (черновик)',
+      budgets: 'Бюджеты'
     },
     columns: {
       Date: 'Дата',
@@ -70,7 +73,17 @@ var PF_I18N = {
       Tags: 'Теги',
       Source: 'Источник',
       SourceId: 'ID источника',
-      Status: 'Статус'
+      Status: 'Статус',
+      Period: 'Период',
+      PeriodValue: 'Значение периода',
+      Fact: 'Факт',
+      Remaining: 'Остаток',
+      PercentUsed: '% использования'
+    },
+    budget_status: {
+      ok: 'В норме',
+      warning: 'Предупреждение',
+      exceeded: 'Превышен'
     }
   },
   en: {
@@ -85,6 +98,7 @@ var PF_I18N = {
       import_transactions: 'Import transactions',
       create_template: 'Create template',
       find_duplicate: 'Find duplicate (by key)',
+      update_budgets: 'Update budgets',
       language: 'Language',
       lang_ru: 'Русский',
       lang_en: 'English'
@@ -97,7 +111,8 @@ var PF_I18N = {
       reports: 'Reports',
       dashboard: 'Dashboard',
       help: 'Help',
-      import_raw: 'Import (Staging)'
+      import_raw: 'Import (Staging)',
+      budgets: 'Budgets'
     },
     columns: {
       Date: 'Date',
@@ -117,7 +132,17 @@ var PF_I18N = {
       Tags: 'Tags',
       Source: 'Source',
       SourceId: 'Source ID',
-      Status: 'Status'
+      Status: 'Status',
+      Period: 'Period',
+      PeriodValue: 'Period Value',
+      Fact: 'Fact',
+      Remaining: 'Remaining',
+      PercentUsed: '% Used'
+    },
+    budget_status: {
+      ok: 'OK',
+      warning: 'Warning',
+      exceeded: 'Exceeded'
     }
   }
 };

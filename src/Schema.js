@@ -60,3 +60,24 @@ var PF_CATEGORIES_SCHEMA = {
   ]
 };
 
+/**
+ * Budgets sheet schema.
+ * Headers are resolved via i18n using `key` (see `src/I18n.js`).
+ */
+var PF_BUDGETS_SCHEMA = {
+  sheetKey: 'budgets',
+  columns: [
+    { key: 'Category', required: true },
+    { key: 'Subcategory', required: false },
+    { key: 'Period', required: true, allowed: ['month', 'year'] },
+    { key: 'PeriodValue', required: true },
+    { key: 'Amount', required: true },
+    { key: 'Fact', required: false }, // Calculated
+    { key: 'Remaining', required: false }, // Calculated
+    { key: 'Status', required: false }, // Calculated
+    { key: 'PercentUsed', required: false }, // Calculated
+    { key: 'Active', required: false },
+    { key: 'Description', required: false }
+  ]
+};
+

@@ -12,6 +12,7 @@ function onOpen() {
   menu.addSeparator();
   menu.addItem(pfT_('menu.refresh_reports'), 'pfRefreshReports');
   menu.addItem(pfT_('menu.refresh_dashboard'), 'pfRefreshDashboard');
+  menu.addItem(pfT_('menu.update_budgets'), 'pfUpdateBudgetCalculations');
   menu.addSeparator();
   menu.addItem(pfT_('menu.import_transactions'), 'pfImportTransactions');
   menu.addItem(pfT_('menu.find_duplicate'), 'pfFindDuplicateByKey');

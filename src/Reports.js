@@ -308,7 +308,135 @@ function pfInitializeReports_(ss) {
 
   row += 14; // Leave space for 12 months + header.
 
-  // Section 4: Account balances (if we track balances).
+  // Section 4: Budgets (current month).
+  var budgetsSheet = pfFindSheetByKey_(ss, PF_SHEET_KEYS.BUDGETS);
+  if (budgetsSheet) {
+    if (lang === 'en') {
+      reportsSheet.getRange(row, 1).setValue('Budgets (Current Month)');
+      reportsSheet.getRange(row + 1, 1).setValue('Category');
+      reportsSheet.getRange(row + 1, 2).setValue('Plan');
+      reportsSheet.getRange(row + 1, 3).setValue('Fact');
+      reportsSheet.getRange(row + 1, 4).setValue('Remaining');
+      reportsSheet.getRange(row + 1, 5).setValue('Status');
+      reportsSheet.getRange(row + 1, 6).setValue('% Used');
+    } else {
+      reportsSheet.getRange(row, 1).setValue('Бюджеты (текущий месяц)');
+      reportsSheet.getRange(row + 1, 1).setValue('Категория');
+      reportsSheet.getRange(row + 1, 2).setValue('План');
+      reportsSheet.getRange(row + 1, 3).setValue('Факт');
+      reportsSheet.getRange(row + 1, 4).setValue('Остаток');
+      reportsSheet.getRange(row + 1, 5).setValue('Статус');
+      reportsSheet.getRange(row + 1, 6).setValue('% использования');
+    }
+
+    // Get current month in YYYY-MM format
+    var today = new Date();
+    var currentMonth = today.getFullYear() + '-' + 
+      String(today.getMonth() + 1).padStart(2, '0');
+
+    // Read budgets data
+    var budgetsLastRow = budgetsSheet.getLastRow();
+    var budgetRows = [];
+    if (budgetsLastRow > 1) {
+      var budgetsData = budgetsSheet.getRange(2, 1, budgetsLastRow - 1, PF_BUDGETS_SCHEMA.columns.length)
+        .getValues();
+
+      // Get column indices
+      var categoryColIdx = pfColumnIndex_(PF_BUDGETS_SCHEMA, 'Category');
+      var subcategoryColIdx = pfColumnIndex_(PF_BUDGETS_SCHEMA, 'Subcategory');
+      var periodColIdx = pfColumnIndex_(PF_BUDGETS_SCHEMA, 'Period');
+      var periodValueColIdx = pfColumnIndex_(PF_BUDGETS_SCHEMA, 'PeriodValue');
+      var amountColIdx = pfColumnIndex_(PF_BUDGETS_SCHEMA, 'Amount');
+      var activeColIdx = pfColumnIndex_(PF_BUDGETS_SCHEMA, 'Active');
+
+      if (categoryColIdx && periodColIdx && periodValueColIdx && amountColIdx) {
+        var categoryIdx = categoryColIdx - 1;
+        var subcategoryIdx = subcategoryColIdx ? subcategoryColIdx - 1 : -1;
+        var periodIdx = periodColIdx - 1;
+        var periodValueIdx = periodValueColIdx - 1;
+        var amountIdx = amountColIdx - 1;
+        var activeIdx = activeColIdx ? activeColIdx - 1 : -1;
+
+        var lang = pfGetLanguage_();
+
+        for (var i = 0; i < budgetsData.length; i++) {
+          var rowData = budgetsData[i];
+
+          // Check array bounds
+          if (rowData.length <= categoryIdx || rowData.length <= periodIdx || 
+              rowData.length <= periodValueIdx || rowData.length <= amountIdx) {
+            continue;
+          }
+
+          // Check if active
+          var active = activeIdx >= 0 ? rowData[activeIdx] : true;
+          if (active === false || active === 'false' || active === 'FALSE' || String(active).trim() === '') {
+            continue;
+          }
+
+          var category = String(rowData[categoryIdx] || '').trim();
+          var subcategory = subcategoryIdx >= 0 ? String(rowData[subcategoryIdx] || '').trim() : '';
+          var period = String(rowData[periodIdx] || '').trim();
+          var periodValue = String(rowData[periodValueIdx] || '').trim();
+          var amount = Number(rowData[amountIdx]) || 0;
+
+          // Filter: current month, monthly period
+          if (!category || period !== PF_BUDGET_PERIOD.MONTH || periodValue !== currentMonth || amount <= 0) {
+            continue;
+          }
+
+          // Calculate fact
+          var fact = 0;
+          try {
+            fact = pfCalculateBudgetFact_(category, subcategory, periodValue, period);
+          } catch (e) {
+            pfLogWarning_('Error calculating fact for budget in Reports: ' + e.toString(), 'pfInitializeReports_');
+            fact = 0;
+          }
+
+          // Calculate remaining
+          var remaining = amount - fact;
+
+          // Calculate status
+          var status = pfGetBudgetStatus_(amount, fact);
+          var statusText = lang === 'en' ? 
+            pfT_('budget_status.' + status, 'en') : 
+            pfT_('budget_status.' + status, 'ru');
+
+          // Calculate percent used
+          var percentUsed = amount > 0 ? (fact / amount) : 0;
+
+          var categoryDisplay = category;
+          if (subcategory && subcategory !== '') {
+            categoryDisplay += ' / ' + subcategory;
+          }
+
+          budgetRows.push([categoryDisplay, amount, fact, remaining, statusText, percentUsed]);
+        }
+
+        // Write budget data
+        if (budgetRows.length > 0) {
+          reportsSheet.getRange(row + 2, 1, budgetRows.length, 6).setValues(budgetRows);
+          reportsSheet.getRange(row + 2, 2, budgetRows.length, 3).setNumberFormat('#,##0.00'); // Plan, Fact, Remaining
+          reportsSheet.getRange(row + 2, 6, budgetRows.length, 1).setNumberFormat('0.00%'); // Percent Used
+
+          // Highlight exceeded budgets
+          for (var i = 0; i < budgetRows.length; i++) {
+            var status = budgetRows[i][4];
+            if (status === pfT_('budget_status.exceeded', lang) || status === 'Превышен' || status === 'Exceeded') {
+              reportsSheet.getRange(row + 2 + i, 1, 1, 6).setBackground('#ffcccc'); // Light red
+            }
+          }
+        }
+      }
+    }
+
+    row += Math.max(12, budgetRows.length > 0 ? budgetRows.length + 3 : 3); // Leave space for budgets + header.
+  } else {
+    row += 3; // Minimal space if no budgets sheet
+  }
+
+  // Section 5: Account balances (if we track balances).
   if (lang === 'en') {
     reportsSheet.getRange(row, 1).setValue('Account Balances');
     reportsSheet.getRange(row + 1, 1).setValue('Account');

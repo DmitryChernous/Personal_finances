@@ -78,3 +78,26 @@ var PF_ACCOUNT_TYPE = {
   INVESTMENT: 'investment',
   OTHER: 'other'
 };
+
+/**
+ * Budget status values.
+ */
+var PF_BUDGET_STATUS = {
+  OK: 'ok',
+  WARNING: 'warning',
+  EXCEEDED: 'exceeded'
+};
+
+/**
+ * Budget period types.
+ */
+var PF_BUDGET_PERIOD = {
+  MONTH: 'month',
+  YEAR: 'year'
+};
+
+/**
+ * Budget warning threshold (percentage of remaining amount from plan).
+ * If remaining <= 20% of plan, status is WARNING.
+ */
+var PF_BUDGET_WARNING_THRESHOLD = 0.20;
