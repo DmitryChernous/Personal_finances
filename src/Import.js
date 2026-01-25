@@ -75,21 +75,47 @@ var PF_IMPORTER_INTERFACE = {
  * @returns {string}
  */
 function pfGenerateDedupeKey_(transaction) {
-  if (transaction.sourceId) {
-    return transaction.source + ':' + transaction.sourceId;
+  // Normalize sourceId - convert to string and trim
+  var sourceId = transaction.sourceId ? String(transaction.sourceId).trim() : '';
+  
+  if (sourceId && sourceId !== '') {
+    // Use sourceId if available
+    var source = String(transaction.source || '').trim();
+    return source + ':' + sourceId;
   }
   
   // Fallback: hash of key fields
+  var dateStr = '';
+  if (transaction.date) {
+    // Handle both Date objects and ISO strings
+    if (transaction.date instanceof Date) {
+      dateStr = Utilities.formatDate(transaction.date, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+    } else if (typeof transaction.date === 'string') {
+      // Try to parse ISO string
+      try {
+        var dateObj = new Date(transaction.date);
+        if (!isNaN(dateObj.getTime())) {
+          dateStr = Utilities.formatDate(dateObj, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+        }
+      } catch (e) {
+        // Ignore
+      }
+    }
+  }
+  
   var keyFields = [
-    transaction.date ? Utilities.formatDate(transaction.date, Session.getScriptTimeZone(), 'yyyy-MM-dd') : '',
-    transaction.account || '',
+    dateStr,
+    String(transaction.account || '').trim(),
     String(transaction.amount || ''),
-    transaction.type || ''
+    String(transaction.type || '').trim()
   ].join('|');
   
-  return transaction.source + ':' + Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, keyFields).map(function(b) {
+  var source = String(transaction.source || '').trim();
+  var hash = Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, keyFields).map(function(b) {
     return ('0' + (b & 0xFF).toString(16)).slice(-2);
   }).join('');
+  
+  return (source || 'unknown') + ':' + hash;
 }
 
 /**
@@ -315,23 +341,29 @@ function pfGetExistingTransactionKeys_() {
   
   for (var i = 0; i < data.length; i++) {
     var row = data[i];
-    var source = row[sourceCol - 1];
-    var sourceId = sourceIdCol ? row[sourceIdCol - 1] : null;
+    var source = String(row[sourceCol - 1] || '').trim();
+    var sourceId = sourceIdCol ? String(row[sourceIdCol - 1] || '').trim() : '';
     
-    if (sourceId) {
+    // Only process rows with source
+    if (!source) {
+      continue;
+    }
+    
+    if (sourceId && sourceId !== '') {
+      // Use sourceId if available
       keys[source + ':' + sourceId] = true;
     } else {
-      // Generate hash key
+      // Generate hash key if no sourceId
       var date = row[dateCol - 1];
-      var account = row[accountCol - 1];
+      var account = String(row[accountCol - 1] || '').trim();
       var amount = row[amountCol - 1];
-      var type = row[typeCol - 1];
+      var type = String(row[typeCol - 1] || '').trim();
       
       var keyFields = [
         date ? Utilities.formatDate(date, Session.getScriptTimeZone(), 'yyyy-MM-dd') : '',
-        account || '',
+        account,
         String(amount || ''),
-        type || ''
+        type
       ].join('|');
       
       var hash = Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, keyFields).map(function(b) {
@@ -461,6 +493,7 @@ function pfFindDuplicateTransaction(dedupeKey) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var txSheet = pfFindSheetByKey_(ss, PF_SHEET_KEYS.TRANSACTIONS);
   if (!txSheet || txSheet.getLastRow() <= 1) {
+    Logger.log('[SERVER] Transactions sheet is empty');
     return { found: false, message: 'Лист транзакций пуст' };
   }
   
@@ -472,41 +505,59 @@ function pfFindDuplicateTransaction(dedupeKey) {
   var typeCol = pfColumnIndex_(PF_TRANSACTIONS_SCHEMA, 'Type');
   
   if (!sourceCol || !dateCol || !accountCol || !amountCol || !typeCol) {
+    Logger.log('[SERVER] Missing required columns');
     return { found: false, message: 'Ошибка: не найдены необходимые колонки' };
   }
   
   var data = txSheet.getRange(2, 1, txSheet.getLastRow() - 1, PF_TRANSACTIONS_SCHEMA.columns.length).getValues();
+  Logger.log('[SERVER] Checking ' + data.length + ' existing transactions');
   
   // Parse dedupeKey to extract source and sourceId or hash
   var parts = dedupeKey.split(':');
   if (parts.length < 2) {
+    Logger.log('[SERVER] Invalid key format');
     return { found: false, message: 'Неверный формат ключа дедупликации' };
   }
   
   var source = parts[0];
   var keySuffix = parts.slice(1).join(':'); // Everything after first ':'
   
+  Logger.log('[SERVER] Looking for source: ' + source + ', suffix: ' + keySuffix);
+  
+  var checkedCount = 0;
+  var sampleKeys = [];
+  
   for (var i = 0; i < data.length; i++) {
     var row = data[i];
-    var rowSource = row[sourceCol - 1];
-    var rowSourceId = sourceIdCol ? row[sourceIdCol - 1] : null;
+    var rowSource = String(row[sourceCol - 1] || '').trim();
+    
+    // Only check rows with matching source
+    if (rowSource !== source) {
+      continue;
+    }
+    
+    checkedCount++;
+    var rowSourceId = sourceIdCol ? String(row[sourceIdCol - 1] || '').trim() : '';
     
     // Check if this row matches the dedupeKey
     var rowKey = null;
-    if (rowSourceId) {
+    if (rowSourceId && rowSourceId !== '') {
       rowKey = rowSource + ':' + rowSourceId;
+      if (checkedCount <= 5) {
+        sampleKeys.push('Row ' + (i + 2) + ': ' + rowKey);
+      }
     } else {
       // Generate hash key
       var date = row[dateCol - 1];
-      var account = row[accountCol - 1];
+      var account = String(row[accountCol - 1] || '').trim();
       var amount = row[amountCol - 1];
-      var type = row[typeCol - 1];
+      var type = String(row[typeCol - 1] || '').trim();
       
       var keyFields = [
         date ? Utilities.formatDate(date, Session.getScriptTimeZone(), 'yyyy-MM-dd') : '',
-        account || '',
+        account,
         String(amount || ''),
-        type || ''
+        type
       ].join('|');
       
       var hash = Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, keyFields).map(function(b) {
@@ -514,6 +565,9 @@ function pfFindDuplicateTransaction(dedupeKey) {
       }).join('');
       
       rowKey = (rowSource || 'unknown') + ':' + hash;
+      if (checkedCount <= 5) {
+        sampleKeys.push('Row ' + (i + 2) + ': ' + rowKey + ' (hash from: ' + keyFields + ')');
+      }
     }
     
     if (rowKey === dedupeKey) {
@@ -539,8 +593,13 @@ function pfFindDuplicateTransaction(dedupeKey) {
     }
   }
   
-  Logger.log('[SERVER] Duplicate not found');
-  return { found: false, message: 'Дублирующая транзакция не найдена в листе "Транзакции". Возможно, это ложное срабатывание.' };
+  Logger.log('[SERVER] Duplicate not found. Checked ' + checkedCount + ' transactions with source "' + source + '"');
+  Logger.log('[SERVER] Sample keys from existing transactions: ' + sampleKeys.join('; '));
+  
+  return { 
+    found: false, 
+    message: 'Дублирующая транзакция не найдена в листе "Транзакции". Проверено ' + checkedCount + ' транзакций с источником "' + source + '". Возможно, это ложное срабатывание дедупликации - транзакция будет добавлена при импорте.' 
+  };
 }
 
 /**
