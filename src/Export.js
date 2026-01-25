@@ -328,7 +328,8 @@ function pfExportTransactionsCSV() {
     
     // Create file in Google Drive
     var fileName = 'transactions_' + Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyyMMdd_HHmmss') + '.csv';
-    var file = DriveApp.createFile(fileName, blob);
+    var file = DriveApp.createFile(blob);
+    file.setName(fileName);
     
     // Show link to user
     var lang = pfGetLanguage_();
@@ -362,7 +363,8 @@ function pfExportTransactionsJSON() {
     
     // Create file in Google Drive
     var fileName = 'transactions_' + Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyyMMdd_HHmmss') + '.json';
-    var file = DriveApp.createFile(fileName, blob);
+    var file = DriveApp.createFile(blob);
+    file.setName(fileName);
     
     // Show link to user
     var lang = pfGetLanguage_();
@@ -396,7 +398,8 @@ function pfExportAllDataJSON() {
     
     // Create file in Google Drive
     var fileName = 'all_data_' + Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyyMMdd_HHmmss') + '.json';
-    var file = DriveApp.createFile(fileName, blob);
+    var file = DriveApp.createFile(blob);
+    file.setName(fileName);
     
     // Show link to user
     var lang = pfGetLanguage_();
