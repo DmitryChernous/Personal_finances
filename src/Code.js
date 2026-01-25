@@ -17,6 +17,7 @@ function onOpen() {
   menu.addItem('Найти дубликат (по ключу)', 'pfFindDuplicateByKey');
   menu.addSeparator();
   menu.addItem(pfT_('menu.generate_test_data'), 'pfGenerateTestData');
+  menu.addItem(pfT_('menu.create_template'), 'pfCreateTemplate');
 
   menu
     .addSubMenu(

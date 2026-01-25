@@ -36,6 +36,7 @@ var PF_I18N = {
       refresh_dashboard: 'Обновить дашборд',
       generate_test_data: 'Заполнить тестовыми данными',
       import_transactions: 'Импорт транзакций',
+      create_template: 'Создать шаблон',
       language: 'Язык',
       lang_ru: 'Русский',
       lang_en: 'English'
@@ -81,6 +82,7 @@ var PF_I18N = {
       refresh_dashboard: 'Refresh dashboard',
       generate_test_data: 'Generate test data',
       import_transactions: 'Import transactions',
+      create_template: 'Create template',
       language: 'Language',
       lang_ru: 'Русский',
       lang_en: 'English'
