@@ -133,19 +133,41 @@
       document.getElementById('fileInput').addEventListener('change', function(e) {
         var file = e.target.files[0];
         if (file) {
+          document.getElementById('message').innerHTML = '<div>Загрузка файла...</div>';
+          document.getElementById('previewBtn').disabled = true;
+          
           var reader = new FileReader();
           reader.onload = function(e) {
-            fileContent = e.target.result;
-            document.getElementById('message').innerHTML = 
-              '<div class="success">Файл загружен: ' + file.name + '</div>';
-            // Reset preview
-            previewData = null;
-            document.getElementById('previewBtn').disabled = false;
-            document.getElementById('commitBtn').disabled = true;
-            document.getElementById('commitWithReviewBtn').disabled = true;
-            document.getElementById('stats').style.display = 'none';
+            try {
+              fileContent = e.target.result;
+              if (fileContent && fileContent.length > 0) {
+                document.getElementById('message').innerHTML = 
+                  '<div class="success">Файл загружен: ' + file.name + ' (' + fileContent.length + ' символов)</div>';
+                // Reset preview
+                previewData = null;
+                document.getElementById('previewBtn').disabled = false;
+                document.getElementById('commitBtn').disabled = true;
+                document.getElementById('commitWithReviewBtn').disabled = true;
+                document.getElementById('stats').style.display = 'none';
+              } else {
+                showError('Файл пуст или не удалось прочитать содержимое');
+                document.getElementById('previewBtn').disabled = true;
+              }
+            } catch (err) {
+              showError('Ошибка при чтении файла: ' + err.message);
+              document.getElementById('previewBtn').disabled = true;
+            }
+          };
+          reader.onerror = function(e) {
+            showError('Ошибка при чтении файла');
+            document.getElementById('previewBtn').disabled = true;
+            fileContent = null;
           };
           reader.readAsText(file, 'UTF-8');
+        } else {
+          fileContent = null;
+          document.getElementById('previewBtn').disabled = true;
+          document.getElementById('message').innerHTML = '';
         }
       });
     };
@@ -168,9 +190,36 @@
     }
     
     function handlePreview() {
-      if (!fileContent) {
+      // Check if file is selected
+      var fileInput = document.getElementById('fileInput');
+      if (!fileInput.files || fileInput.files.length === 0) {
         showError('Сначала выберите файл');
         return;
+      }
+      
+      // If fileContent is not set, try to read it again
+      if (!fileContent) {
+        var file = fileInput.files[0];
+        if (file) {
+          var reader = new FileReader();
+          reader.onload = function(e) {
+            fileContent = e.target.result;
+            if (fileContent) {
+              // Retry preview
+              handlePreview();
+            } else {
+              showError('Не удалось прочитать содержимое файла');
+            }
+          };
+          reader.onerror = function() {
+            showError('Ошибка при чтении файла');
+          };
+          reader.readAsText(file, 'UTF-8');
+          return; // Wait for file to be read
+        } else {
+          showError('Сначала выберите файл');
+          return;
+        }
       }
       
       var defaultAccount = document.getElementById('defaultAccount').value;
