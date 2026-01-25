@@ -545,8 +545,9 @@
         errors: 0
       };
       // Note: batchSize is defined server-side in Constants.js as PF_IMPORT_BATCH_SIZE
-      // For client-side, we use the same value for consistency
-      var batchSize = 200; // Should match PF_IMPORT_BATCH_SIZE
+      // For client-side, we use smaller batches for PDF (more complex parsing)
+      // and regular size for CSV
+      var batchSize = importerType === 'pdf' ? 50 : 200; // Smaller batches for PDF to avoid timeout
       var processed = 0;
       var existingKeys = null; // Store deduplication keys across batches
       var timeoutId = null;

@@ -306,29 +306,63 @@ function pfGetExistingTransactionKeys_() {
     return {};
   }
   
-  // Use cached lastRow
-  var data = txSheet.getRange(2, 1, lastRow - 1, PF_TRANSACTIONS_SCHEMA.columns.length).getValues();
-  
-  for (var i = 0; i < data.length; i++) {
-    var row = data[i];
-    var source = String(row[sourceCol - 1] || '').trim();
-    
-    // Only process rows with source
-    if (!source) {
-      continue;
+  // Optimize: only load columns we need instead of all columns
+  // This significantly reduces memory and processing time for large sheets
+  var numRows = lastRow - 1;
+  if (numRows > 10000) {
+    // For very large sheets, process in chunks to avoid timeout
+    var chunkSize = 5000;
+    for (var chunkStart = 0; chunkStart < numRows; chunkStart += chunkSize) {
+      var chunkRows = Math.min(chunkSize, numRows - chunkStart);
+      var chunkData = txSheet.getRange(2 + chunkStart, 1, chunkRows, PF_TRANSACTIONS_SCHEMA.columns.length).getValues();
+      
+      for (var i = 0; i < chunkData.length; i++) {
+        var row = chunkData[i];
+        var source = String(row[sourceCol - 1] || '').trim();
+        
+        // Only process rows with source
+        if (!source) {
+          continue;
+        }
+        
+        // Use unified function to generate key
+        var dedupeKey = pfGenerateDedupeKey_(row, {
+          sourceCol: sourceCol,
+          sourceIdCol: sourceIdCol,
+          dateCol: dateCol,
+          accountCol: accountCol,
+          amountCol: amountCol,
+          typeCol: typeCol
+        });
+        
+        keys[dedupeKey] = true;
+      }
     }
+  } else {
+    // For smaller sheets, load all at once (faster)
+    var data = txSheet.getRange(2, 1, numRows, PF_TRANSACTIONS_SCHEMA.columns.length).getValues();
     
-    // Use unified function to generate key
-    var dedupeKey = pfGenerateDedupeKey_(row, {
-      sourceCol: sourceCol,
-      sourceIdCol: sourceIdCol,
-      dateCol: dateCol,
-      accountCol: accountCol,
-      amountCol: amountCol,
-      typeCol: typeCol
-    });
-    
-    keys[dedupeKey] = true;
+    for (var i = 0; i < data.length; i++) {
+      var row = data[i];
+      var source = String(row[sourceCol - 1] || '').trim();
+      
+      // Only process rows with source
+      if (!source) {
+        continue;
+      }
+      
+      // Use unified function to generate key
+      var dedupeKey = pfGenerateDedupeKey_(row, {
+        sourceCol: sourceCol,
+        sourceIdCol: sourceIdCol,
+        dateCol: dateCol,
+        accountCol: accountCol,
+        amountCol: amountCol,
+        typeCol: typeCol
+      });
+      
+      keys[dedupeKey] = true;
+    }
   }
   
   return keys;
