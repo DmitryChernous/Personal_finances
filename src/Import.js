@@ -137,16 +137,58 @@ function pfValidateTransactionDTO_(transaction) {
  * @returns {Array<*>} Row array with values in schema order
  */
 function pfTransactionDTOToRow_(transaction) {
+  Logger.log('[SERVER] pfTransactionDTOToRow_ called, transaction keys: ' + Object.keys(transaction).join(', '));
+  
   var row = [];
   var schema = PF_TRANSACTIONS_SCHEMA;
   
+  // Map schema keys to transaction keys (case-insensitive)
+  var keyMap = {
+    'Date': 'date',
+    'Type': 'type',
+    'Account': 'account',
+    'AccountTo': 'accountTo',
+    'Amount': 'amount',
+    'Currency': 'currency',
+    'Category': 'category',
+    'Subcategory': 'subcategory',
+    'Merchant': 'merchant',
+    'Description': 'description',
+    'Tags': 'tags',
+    'Source': 'source',
+    'SourceId': 'sourceId',
+    'Status': 'status'
+  };
+  
   for (var i = 0; i < schema.columns.length; i++) {
     var col = schema.columns[i];
-    var value = transaction[col.key];
+    var transactionKey = keyMap[col.key] || col.key.toLowerCase();
+    var value = transaction[transactionKey];
+    
+    Logger.log('[SERVER] Column ' + i + ': schemaKey=' + col.key + ', transactionKey=' + transactionKey + ', value=' + (value !== undefined ? String(value).substring(0, 50) : 'undefined'));
     
     // Handle special cases
-    if (col.key === 'Date' && value instanceof Date) {
-      row.push(value);
+    if (col.key === 'Date') {
+      // Date might be ISO string (from server) or Date object
+      if (value instanceof Date) {
+        row.push(value);
+      } else if (typeof value === 'string' && value.length > 0) {
+        // Try to parse ISO string back to Date
+        try {
+          var dateObj = new Date(value);
+          if (!isNaN(dateObj.getTime())) {
+            row.push(dateObj);
+          } else {
+            Logger.log('[SERVER] WARNING: Invalid date string: ' + value);
+            row.push('');
+          }
+        } catch (e) {
+          Logger.log('[SERVER] ERROR parsing date: ' + e.toString());
+          row.push('');
+        }
+      } else {
+        row.push('');
+      }
     } else if (col.key === 'Amount' && typeof value === 'number') {
       row.push(value);
     } else if (value === null || value === undefined) {
@@ -156,6 +198,7 @@ function pfTransactionDTOToRow_(transaction) {
     }
   }
   
+  Logger.log('[SERVER] pfTransactionDTOToRow_ returning row with ' + row.length + ' values');
   return row;
 }
 
@@ -308,6 +351,8 @@ function pfGetExistingTransactionKeys_() {
  * @returns {Object} Preview data for UI
  */
 function pfPreviewImport_(transactions) {
+  Logger.log('[SERVER] pfPreviewImport_ called with ' + transactions.length + ' transactions');
+  
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var stagingSheet = pfEnsureImportRawSheet_(ss);
   
@@ -320,7 +365,17 @@ function pfPreviewImport_(transactions) {
   var rows = [];
   for (var i = 0; i < transactions.length; i++) {
     var tx = transactions[i];
+    
+    if (i < 3) {
+      Logger.log('[SERVER] Sample transaction ' + i + ' keys: ' + Object.keys(tx).join(', '));
+      Logger.log('[SERVER] Sample transaction ' + i + ' data: date=' + tx.date + ', type=' + tx.type + ', account=' + tx.account + ', amount=' + tx.amount);
+    }
+    
     var row = pfTransactionDTOToRow_(tx);
+    
+    if (i < 3) {
+      Logger.log('[SERVER] Sample row ' + i + ' length: ' + row.length + ', first 5 values: ' + row.slice(0, 5).join(', '));
+    }
     
     // Add error column
     var errorText = '';
@@ -335,8 +390,19 @@ function pfPreviewImport_(transactions) {
     rows.push(row);
   }
   
+  Logger.log('[SERVER] Prepared ' + rows.length + ' rows for writing');
+  Logger.log('[SERVER] Row length: ' + (rows.length > 0 ? rows[0].length : 0));
+  
   if (rows.length > 0) {
-    stagingSheet.getRange(2, 1, rows.length, rows[0].length).setValues(rows);
+    try {
+      Logger.log('[SERVER] Writing to sheet: range=2,1,' + rows.length + ',' + rows[0].length);
+      stagingSheet.getRange(2, 1, rows.length, rows[0].length).setValues(rows);
+      Logger.log('[SERVER] Successfully wrote ' + rows.length + ' rows to sheet');
+    } catch (e) {
+      Logger.log('[SERVER] ERROR writing to sheet: ' + e.toString());
+      Logger.log('[SERVER] Error stack: ' + (e.stack || 'No stack'));
+      throw e;
+    }
     
     // Format error column
     var errorCol = PF_TRANSACTIONS_SCHEMA.columns.length + 1;
