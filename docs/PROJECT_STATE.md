@@ -135,6 +135,55 @@
 - ✅ Проверена работа статусов (OK, WARNING, EXCEEDED)
 - ✅ Проверена интеграция в Reports и Dashboard
 
+### Stage 2: Recurring Transactions (TASK-002) ✅
+**Статус:** Завершено  
+**Дата завершения:** 25 января 2026
+
+**Реализовано:**
+- ✅ Схема регулярных платежей (`PF_RECURRING_TRANSACTIONS_SCHEMA`)
+- ✅ Модуль `src/RecurringTransactions.js` с функциями:
+  - `pfInitializeRecurringTransactions_()` - инициализация листа
+  - `pfShouldCreateTransaction_()` - проверка необходимости создания транзакции
+  - `pfGetNextDueDate_()` - расчет следующей даты платежа
+  - `pfCreateRecurringTransactions_()` - создание транзакций
+  - `pfCreateRecurringTransactions()` - публичная функция для меню
+- ✅ Поддержка частот: weekly, monthly, quarterly, yearly
+- ✅ Интеграция в Setup и Sheets
+- ✅ Меню "Создать регулярные платежи"
+- ✅ Защита от дубликатов (проверка по LastCreated)
+
+**Примечание:** Функционал реализован, но пользователь отметил, что регулярные платежи и так будут в банковской выписке, поэтому не видит большого смысла в отдельном учете. Функционал оставлен для возможного использования в будущем.
+
+### Stage 3: Auto-categorization (TASK-003) ✅
+**Статус:** Завершено  
+**Дата завершения:** 25 января 2026
+
+**Реализовано:**
+- ✅ Схема правил категоризации (`PF_CATEGORY_RULES_SCHEMA`) с полями: RuleName, Pattern, PatternType, Category, Subcategory, Priority, Active, ApplyTo
+- ✅ Константы `PF_PATTERN_TYPE` (contains, startsWith, endsWith, regex, exact) и `PF_RULE_APPLY_TO` (merchant, description, both)
+- ✅ Модуль `src/CategoryRules.js` с функциями:
+  - `pfInitializeCategoryRules_()` - инициализация листа с валидацией
+  - `pfGetAllCategoryRules_()` - загрузка всех активных правил из листа
+  - `pfMatchCategoryRule_()` - поиск подходящего правила для транзакции
+  - `pfMatchPattern_()` - проверка соответствия паттерну
+  - `pfApplyCategoryRules_()` - применение правил к транзакции
+  - `pfApplyAutoCategorizationToAll_()` - применение ко всем транзакциям без категории
+  - `pfApplyAutoCategorizationToAll()` - публичная функция для меню
+  - `pfCreateDefaultCategoryRules_()` - предзаполнение правил по умолчанию
+- ✅ Интеграция автокатегоризации в `Import.js` (pfProcessDataBatch) - автоматическое применение при импорте
+- ✅ Интеграция в Setup.js и Sheets.js
+- ✅ Меню "Применить автокатегоризацию"
+- ✅ Поддержка типов паттернов: contains, startsWith, endsWith, regex, exact
+- ✅ Поддержка применения к полям: merchant, description, both
+- ✅ Приоритет правил (правила с большим приоритетом применяются первыми)
+- ✅ Предзаполненные правила для популярных российских магазинов, ресторанов, транспорта и т.д.
+
+**Особенности:**
+- Автокатегоризация применяется автоматически при импорте транзакций (если категория не установлена)
+- Правила не перезаписывают существующие категории
+- Поддержка case-insensitive поиска (кроме regex)
+- Обработка ошибок при невалидных regex паттернах
+
 ## Архитектурные улучшения (2026-01-25)
 
 Проведен полный архитектурный ревью и исправлены все выявленные проблемы (критические, средние и низкоприоритетные):
