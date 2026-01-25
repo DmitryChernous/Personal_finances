@@ -162,11 +162,14 @@ function pfCalculateBudgetFact_(category, subcategory, periodValue, period) {
     // Cache lastRow and read data
     var lastRow = txSheet.getLastRow();
     if (lastRow <= 1) {
+      pfLogDebug_('No transactions data (lastRow=' + lastRow + ')', 'pfCalculateBudgetFact_');
       return 0; // No data
     }
     
     var data = txSheet.getRange(2, 1, lastRow - 1, PF_TRANSACTIONS_SCHEMA.columns.length)
       .getValues();
+    
+    pfLogDebug_('Read ' + data.length + ' transaction rows', 'pfCalculateBudgetFact_');
     
     // Array indices (0-based)
     var categoryIdx = categoryColIdx - 1;
@@ -181,6 +184,9 @@ function pfCalculateBudgetFact_(category, subcategory, periodValue, period) {
     var categoryTrimmed = String(category).trim();
     var subcategoryTrimmed = subcategory ? String(subcategory).trim() : '';
     
+    pfLogDebug_('pfCalculateBudgetFact_: category=' + categoryTrimmed + ', subcategory=' + subcategoryTrimmed + ', period=' + period + ', periodValue=' + periodValue + ', dateRange=' + dateStart + ' to ' + dateEnd, 'pfCalculateBudgetFact_');
+    
+    var matchedCount = 0;
     for (var i = 0; i < data.length; i++) {
       var row = data[i];
       
@@ -198,17 +204,42 @@ function pfCalculateBudgetFact_(category, subcategory, periodValue, period) {
       var rowAmount = Number(row[amountIdx]) || 0;
       
       // Filter
-      if (!rowDate || !(rowDate instanceof Date)) continue;
-      if (rowDate < dateStart || rowDate > dateEnd) continue;
-      if (rowCategory !== categoryTrimmed) continue;
-      if (subcategoryTrimmed && subcategoryTrimmed !== '' && rowSubcategory !== subcategoryTrimmed) continue;
-      if (rowStatus !== PF_TRANSACTION_STATUS.OK) continue;
+      if (!rowDate || !(rowDate instanceof Date)) {
+        pfLogDebug_('Transaction ' + i + ': invalid date (type: ' + typeof rowDate + ', value: ' + rowDate + ')', 'pfCalculateBudgetFact_');
+        continue;
+      }
+      if (rowDate < dateStart || rowDate > dateEnd) {
+        pfLogDebug_('Transaction ' + i + ': date out of range (date=' + rowDate + ', range=' + dateStart + ' to ' + dateEnd + ')', 'pfCalculateBudgetFact_');
+        continue;
+      }
+      if (rowCategory !== categoryTrimmed) {
+        pfLogDebug_('Transaction ' + i + ': category mismatch (expected: "' + categoryTrimmed + '", got: "' + rowCategory + '", match: ' + (rowCategory === categoryTrimmed) + ')', 'pfCalculateBudgetFact_');
+        continue;
+      }
+      if (subcategoryTrimmed && subcategoryTrimmed !== '' && rowSubcategory !== subcategoryTrimmed) {
+        pfLogDebug_('Transaction ' + i + ': subcategory mismatch (expected: "' + subcategoryTrimmed + '", got: "' + rowSubcategory + '", budget has subcategory: ' + (subcategoryTrimmed !== '') + ')', 'pfCalculateBudgetFact_');
+        continue;
+      }
+      if (rowStatus !== PF_TRANSACTION_STATUS.OK) {
+        pfLogDebug_('Transaction ' + i + ': status not OK (expected: ' + PF_TRANSACTION_STATUS.OK + ', got: ' + rowStatus + ')', 'pfCalculateBudgetFact_');
+        continue;
+      }
       // Include both expenses and income (budget can be for both)
-      if (rowType !== PF_TRANSACTION_TYPE.EXPENSE && rowType !== PF_TRANSACTION_TYPE.INCOME) continue;
+      if (rowType !== PF_TRANSACTION_TYPE.EXPENSE && rowType !== PF_TRANSACTION_TYPE.INCOME) {
+        pfLogDebug_('Transaction ' + i + ': type not expense/income (expected: ' + PF_TRANSACTION_TYPE.EXPENSE + ' or ' + PF_TRANSACTION_TYPE.INCOME + ', got: ' + rowType + ')', 'pfCalculateBudgetFact_');
+        continue;
+      }
+      
+      // Log matched transaction details
+      pfLogDebug_('Transaction ' + i + ' MATCHED: date=' + rowDate + ', category=' + rowCategory + ', subcategory=' + rowSubcategory + ', type=' + rowType + ', status=' + rowStatus + ', amount=' + rowAmount, 'pfCalculateBudgetFact_');
       
       // Sum (for expenses, amount is negative in some systems, but we assume positive)
       total += Math.abs(rowAmount);
+      matchedCount++;
+      pfLogDebug_('Transaction ' + i + ' matched: amount=' + rowAmount + ', total=' + total, 'pfCalculateBudgetFact_');
     }
+    
+    pfLogDebug_('pfCalculateBudgetFact_ result: total=' + total + ', matchedCount=' + matchedCount + ', totalTransactions=' + data.length, 'pfCalculateBudgetFact_');
     
     return total;
     
@@ -305,6 +336,8 @@ function pfUpdateBudgetCalculations_(ss) {
     var data = budgetsSheet.getRange(2, 1, lastRow - 1, PF_BUDGETS_SCHEMA.columns.length)
       .getValues();
     
+    pfLogInfo_('Read ' + data.length + ' budget rows from sheet (lastRow=' + lastRow + ')', 'pfUpdateBudgetCalculations_');
+    
     // Array indices (0-based)
     var categoryIdx = categoryColIdx - 1;
     var subcategoryIdx = subcategoryColIdx ? subcategoryColIdx - 1 : -1;
@@ -316,6 +349,8 @@ function pfUpdateBudgetCalculations_(ss) {
     var statusIdx = statusColIdx - 1;
     var percentIdx = percentColIdx - 1;
     var activeIdx = activeColIdx ? activeColIdx - 1 : -1;
+    
+    pfLogDebug_('Column indices: category=' + categoryIdx + ', subcategory=' + subcategoryIdx + ', period=' + periodIdx + ', periodValue=' + periodValueIdx + ', amount=' + amountIdx, 'pfUpdateBudgetCalculations_');
     
     // Prepare batch update arrays
     var factValues = [];
@@ -339,23 +374,47 @@ function pfUpdateBudgetCalculations_(ss) {
       }
       
       // Check if active
-      var active = activeIdx >= 0 ? row[activeIdx] : true;
-      if (active === false || active === 'false' || active === 'FALSE' || String(active).trim() === '') {
-        factValues.push(['']);
-        remainingValues.push(['']);
-        statusValues.push(['']);
-        percentValues.push(['']);
-        continue;
+      // If Active column is empty or not explicitly set to false, budget is active by default
+      var active = true; // Default: active
+      if (activeIdx >= 0) {
+        var activeValue = row[activeIdx];
+        // Only skip if explicitly set to false
+        if (activeValue === false || activeValue === 'false' || activeValue === 'FALSE' || 
+            (typeof activeValue === 'string' && activeValue.trim().toLowerCase() === 'false')) {
+          pfLogDebug_('Skipping budget row ' + (i + 2) + ': explicitly marked as inactive', 'pfUpdateBudgetCalculations_');
+          factValues.push(['']);
+          remainingValues.push(['']);
+          statusValues.push(['']);
+          percentValues.push(['']);
+          continue;
+        }
+        // Empty or any other value (including 'true', 'yes', etc.) means active
       }
       
       var category = String(row[categoryIdx] || '').trim();
       var subcategory = subcategoryIdx >= 0 ? String(row[subcategoryIdx] || '').trim() : '';
       var period = String(row[periodIdx] || '').trim();
-      var periodValue = String(row[periodValueIdx] || '').trim();
+      
+      // Handle periodValue: Google Sheets may convert "2026-01" to Date object
+      var periodValueRaw = row[periodValueIdx];
+      var periodValue = '';
+      if (periodValueRaw instanceof Date) {
+        // Convert Date to YYYY-MM format
+        var year = periodValueRaw.getFullYear();
+        var month = periodValueRaw.getMonth() + 1; // getMonth() is 0-based
+        periodValue = year + '-' + (month < 10 ? '0' + month : month);
+        pfLogDebug_('Converted Date to periodValue: ' + periodValueRaw + ' -> ' + periodValue, 'pfUpdateBudgetCalculations_');
+      } else {
+        periodValue = String(periodValueRaw || '').trim();
+      }
+      
       var amount = Number(row[amountIdx]) || 0;
+      
+      pfLogDebug_('Processing budget row ' + (i + 2) + ': category=' + category + ', subcategory=' + subcategory + ', period=' + period + ', periodValue=' + periodValue + ', amount=' + amount, 'pfUpdateBudgetCalculations_');
       
       // Skip if required fields are empty
       if (!category || !period || !periodValue || amount <= 0) {
+        pfLogDebug_('Skipping budget row ' + (i + 2) + ': missing required fields', 'pfUpdateBudgetCalculations_');
         factValues.push(['']);
         remainingValues.push(['']);
         statusValues.push(['']);
@@ -367,6 +426,7 @@ function pfUpdateBudgetCalculations_(ss) {
       var fact = 0;
       try {
         fact = pfCalculateBudgetFact_(category, subcategory, periodValue, period);
+        pfLogDebug_('Calculated fact for row ' + (i + 2) + ': ' + fact, 'pfUpdateBudgetCalculations_');
       } catch (e) {
         pfLogWarning_('Error calculating fact for budget row ' + (i + 2) + ': ' + e.toString(), 'pfUpdateBudgetCalculations_');
         fact = 0;
@@ -391,10 +451,14 @@ function pfUpdateBudgetCalculations_(ss) {
     
     // Batch write values
     if (factValues.length > 0) {
+      pfLogDebug_('Writing ' + factValues.length + ' budget calculations to sheet', 'pfUpdateBudgetCalculations_');
       budgetsSheet.getRange(2, factColIdx, factValues.length, 1).setValues(factValues);
       budgetsSheet.getRange(2, remainingColIdx, remainingValues.length, 1).setValues(remainingValues);
       budgetsSheet.getRange(2, statusColIdx, statusValues.length, 1).setValues(statusValues);
       budgetsSheet.getRange(2, percentColIdx, percentValues.length, 1).setValues(percentValues);
+      
+      // Format percent column
+      budgetsSheet.getRange(2, percentColIdx, percentValues.length, 1).setNumberFormat('0.00%');
       
       // Apply conditional formatting (highlight rows)
       for (var i = 0; i < data.length; i++) {
