@@ -636,10 +636,14 @@
         // Set timeout (5 minutes)
         timeoutId = setTimeout(function() {
           console.error('[CLIENT] TIMEOUT after 5 minutes!');
+          console.error('[CLIENT] Last processed:', processed, 'totalCount:', totalCount);
+          console.error('[CLIENT] Check server logs for detailed information');
           hideProgress();
-          showError('Таймаут при обработке (5 минут). Попробуйте уменьшить размер файла или разбить его на части.');
+          showError('Таймаут при обработке (5 минут). Обработано: ' + processed + ' из ' + totalCount + '. Проверьте логи в Apps Script для деталей. Попробуйте уменьшить размер файла или разбить его на части.');
           document.getElementById('previewBtn').disabled = false;
         }, 300000);
+        
+        console.log('[CLIENT] Timeout set for 5 minutes, starting server call...');
         
         var callStartTime = Date.now();
         console.log('[CLIENT] Starting google.script.run.pfProcessDataBatch at', new Date().toISOString());
