@@ -64,8 +64,11 @@ function pfGenerateTestAccounts_(ss, clearExisting) {
   // Ensure headers.
   pfEnsureHeaderRow_(accountsSheet, PF_ACCOUNTS_SCHEMA);
 
-  if (clearExisting && accountsSheet.getLastRow() > 1) {
-    accountsSheet.deleteRows(2, accountsSheet.getLastRow() - 1);
+  // Cache lastRow to avoid multiple calls
+  var lastRow = accountsSheet.getLastRow();
+  if (clearExisting && lastRow > 1) {
+    accountsSheet.deleteRows(2, lastRow - 1);
+    lastRow = 1; // Reset after clearing
   }
 
   var accounts = [
@@ -76,7 +79,7 @@ function pfGenerateTestAccounts_(ss, clearExisting) {
     ['Доллары', 'cash', 'USD', '500', 'true', 'Наличные доллары']
   ];
 
-  var startRow = accountsSheet.getLastRow() + 1;
+  var startRow = lastRow + 1;
   if (startRow === 2 && !clearExisting) {
     startRow = 2; // First data row.
   }
@@ -95,8 +98,11 @@ function pfGenerateTestCategories_(ss, clearExisting) {
   // Ensure headers.
   pfEnsureHeaderRow_(categoriesSheet, PF_CATEGORIES_SCHEMA);
 
-  if (clearExisting && categoriesSheet.getLastRow() > 1) {
-    categoriesSheet.deleteRows(2, categoriesSheet.getLastRow() - 1);
+  // Cache lastRow to avoid multiple calls
+  var lastRow = categoriesSheet.getLastRow();
+  if (clearExisting && lastRow > 1) {
+    categoriesSheet.deleteRows(2, lastRow - 1);
+    lastRow = 1; // Reset after clearing
   }
 
   var categories = [
@@ -120,7 +126,7 @@ function pfGenerateTestCategories_(ss, clearExisting) {
     ['Образование', '', 'expense', 'true', 'Курсы, обучение']
   ];
 
-  var startRow = categoriesSheet.getLastRow() + 1;
+  var startRow = lastRow + 1;
   if (startRow === 2 && !clearExisting) {
     startRow = 2; // First data row.
   }
@@ -139,8 +145,10 @@ function pfGenerateTestTransactions_(ss, clearExisting) {
   // Ensure headers.
   pfEnsureHeaderRow_(txSheet, PF_TRANSACTIONS_SCHEMA);
 
-  if (clearExisting && txSheet.getLastRow() > 1) {
-    txSheet.deleteRows(2, txSheet.getLastRow() - 1);
+  // Cache lastRow to avoid multiple calls
+  var lastRow = txSheet.getLastRow();
+  if (clearExisting && lastRow > 1) {
+    txSheet.deleteRows(2, lastRow - 1);
   }
 
   var today = new Date();

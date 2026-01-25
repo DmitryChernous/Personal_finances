@@ -111,6 +111,7 @@ function pfInitializeDashboard_(ss) {
     // Calculate data via script instead of QUERY formula to avoid #N/A bug.
     var txSheet = pfFindSheetByKey_(ss, PF_SHEET_KEYS.TRANSACTIONS);
     if (txSheet) {
+      // Cache lastRow to avoid multiple calls
       var lastRow = txSheet.getLastRow();
       if (lastRow <= 1) {
         // No data rows, skip calculation.
@@ -121,6 +122,7 @@ function pfInitializeDashboard_(ss) {
       var monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
       var monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
       
+      // Use cached lastRow
       var data = txSheet.getRange(2, 1, lastRow - 1, PF_TRANSACTIONS_SCHEMA.columns.length).getValues();
       
       // Get column indices and validate them.

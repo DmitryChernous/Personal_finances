@@ -229,32 +229,32 @@ function pfInitializeReports_(ss) {
 
   // Monthly cashflow for last 12 months - use script-based calculation.
   var txSheet = pfFindSheetByKey_(ss, PF_SHEET_KEYS.TRANSACTIONS);
-  if (txSheet && txSheet.getLastRow() > 1) {
-    var today = new Date();
-    var monthlyData = [];
+  // Cache lastRow to avoid multiple calls
+  var lastRow = txSheet ? txSheet.getLastRow() : 0;
+  if (lastRow <= 1) {
+    return; // No data, skip calculation
+  }
+  
+  var today = new Date();
+  var monthlyData = [];
+  
+  // Get all data once (cache for all months)
+  var data = txSheet.getRange(2, 1, lastRow - 1, PF_TRANSACTIONS_SCHEMA.columns.length).getValues();
+  
+  // Calculate for last 12 months (including current month).
+  for (var monthOffset = 11; monthOffset >= 0; monthOffset--) {
+    var targetDate = new Date(today.getFullYear(), today.getMonth() - monthOffset, 1);
+    var monthStart = new Date(targetDate.getFullYear(), targetDate.getMonth(), 1);
+    var monthEnd = new Date(targetDate.getFullYear(), targetDate.getMonth() + 1, 0);
     
-    // Calculate for last 12 months (including current month).
-    for (var monthOffset = 11; monthOffset >= 0; monthOffset--) {
-      var targetDate = new Date(today.getFullYear(), today.getMonth() - monthOffset, 1);
-      var monthStart = new Date(targetDate.getFullYear(), targetDate.getMonth(), 1);
-      var monthEnd = new Date(targetDate.getFullYear(), targetDate.getMonth() + 1, 0);
-      
-      var monthLabel = '';
-      if (lang === 'en') {
-        var monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-        monthLabel = monthNames[targetDate.getMonth()] + ' ' + targetDate.getFullYear();
-      } else {
-        var monthNamesRu = ['Янв', 'Фев', 'Мар', 'Апр', 'Май', 'Июн', 'Июл', 'Авг', 'Сен', 'Окт', 'Ноя', 'Дек'];
-        monthLabel = monthNamesRu[targetDate.getMonth()] + ' ' + targetDate.getFullYear();
-      }
-      
-      var lastRow = txSheet.getLastRow();
-      if (lastRow <= 1) {
-        // No data rows, skip calculation.
-        continue; // Skip this month
-      }
-      
-      var data = txSheet.getRange(2, 1, lastRow - 1, PF_TRANSACTIONS_SCHEMA.columns.length).getValues();
+    var monthLabel = '';
+    if (lang === 'en') {
+      var monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      monthLabel = monthNames[targetDate.getMonth()] + ' ' + targetDate.getFullYear();
+    } else {
+      var monthNamesRu = ['Янв', 'Фев', 'Мар', 'Апр', 'Май', 'Июн', 'Июл', 'Авг', 'Сен', 'Окт', 'Ноя', 'Дек'];
+      monthLabel = monthNamesRu[targetDate.getMonth()] + ' ' + targetDate.getFullYear();
+    }
       
       // Get column indices and validate them.
       var amountColIdx = pfColumnIndex_(PF_TRANSACTIONS_SCHEMA, 'Amount');

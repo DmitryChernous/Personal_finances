@@ -277,8 +277,21 @@ function pfProcessImportData_(rawData, importer, options) {
  */
 function pfGetExistingTransactionKeys_() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
+  if (!ss) {
+    pfLogWarning_('Cannot get spreadsheet in pfGetExistingTransactionKeys_', 'pfGetExistingTransactionKeys_');
+    return {};
+  }
+  
   var txSheet = pfFindSheetByKey_(ss, PF_SHEET_KEYS.TRANSACTIONS);
-  if (!txSheet || txSheet.getLastRow() <= 1) return {};
+  if (!txSheet) {
+    return {}; // Sheet doesn't exist yet, no existing keys
+  }
+  
+  // Cache lastRow to avoid multiple calls
+  var lastRow = txSheet.getLastRow();
+  if (lastRow <= 1) {
+    return {}; // Only header or empty sheet
+  }
   
   var keys = {};
   var sourceCol = pfColumnIndex_(PF_TRANSACTIONS_SCHEMA, 'Source');
@@ -288,9 +301,13 @@ function pfGetExistingTransactionKeys_() {
   var amountCol = pfColumnIndex_(PF_TRANSACTIONS_SCHEMA, 'Amount');
   var typeCol = pfColumnIndex_(PF_TRANSACTIONS_SCHEMA, 'Type');
   
-  if (!sourceCol || !dateCol || !accountCol || !amountCol || !typeCol) return {};
+  if (!sourceCol || !dateCol || !accountCol || !amountCol || !typeCol) {
+    pfLogWarning_('Missing required columns in Transactions schema', 'pfGetExistingTransactionKeys_');
+    return {};
+  }
   
-  var data = txSheet.getRange(2, 1, txSheet.getLastRow() - 1, PF_TRANSACTIONS_SCHEMA.columns.length).getValues();
+  // Use cached lastRow
+  var data = txSheet.getRange(2, 1, lastRow - 1, PF_TRANSACTIONS_SCHEMA.columns.length).getValues();
   
   for (var i = 0; i < data.length; i++) {
     var row = data[i];
@@ -531,15 +548,25 @@ function pfCommitImport_(includeNeedsReview) {
   
   try {
     var ss = SpreadsheetApp.getActiveSpreadsheet();
+    if (!ss) {
+      return pfCreateErrorResponse_('Не удалось получить доступ к таблице');
+    }
+    
     var stagingSheet = pfFindSheetByKey_(ss, PF_SHEET_KEYS.IMPORT_RAW);
-    if (!stagingSheet || stagingSheet.getLastRow() <= 1) {
-      return pfCreateErrorResponse_('Нет данных для импорта');
+    if (!stagingSheet) {
+      return pfCreateErrorResponse_('Лист предпросмотра не найден. Сначала выполните предпросмотр импорта.');
+    }
+    
+    // Cache lastRow to avoid multiple calls
+    var stagingLastRow = stagingSheet.getLastRow();
+    if (stagingLastRow <= 1) {
+      return pfCreateErrorResponse_('Нет данных для импорта. Лист предпросмотра пуст.');
     }
     
     var txSheet = pfFindOrCreateSheetByKey_(ss, PF_SHEET_KEYS.TRANSACTIONS);
     var numDataCols = PF_TRANSACTIONS_SCHEMA.columns.length;
-    var lastStagingRow = stagingSheet.getLastRow();
-    var data = stagingSheet.getRange(2, 1, lastStagingRow - 1, numDataCols).getValues();
+    // Use cached stagingLastRow
+    var data = stagingSheet.getRange(2, 1, stagingLastRow - 1, numDataCols).getValues();
     
     var statusColIdx = pfColumnIndex_(PF_TRANSACTIONS_SCHEMA, 'Status');
     var dateColIdx = pfColumnIndex_(PF_TRANSACTIONS_SCHEMA, 'Date');
@@ -654,7 +681,7 @@ function pfCommitImport_(includeNeedsReview) {
     }
     
     // Clear staging sheet safely (content, formatting, and notes)
-    var stagingLastRow = stagingSheet.getLastRow();
+    // Use cached stagingLastRow
     if (stagingLastRow > 1) {
       var rowsToDelete = stagingLastRow - 1;
       if (rowsToDelete > 0) {

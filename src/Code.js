@@ -78,9 +78,20 @@ function pfFindDuplicateByKey() {
   );
   
   if (response.getSelectedButton() === ui.Button.OK) {
-    var dedupeKey = response.getResponseText().trim();
-    if (!dedupeKey) {
+    var dedupeKey = response.getResponseText();
+    
+    // Sanitize input: trim and validate
+    if (!dedupeKey || typeof dedupeKey !== 'string') {
       ui.alert('Ошибка', 'Ключ дедупликации не может быть пустым', ui.ButtonSet.OK);
+      return;
+    }
+    
+    dedupeKey = dedupeKey.trim();
+    
+    // Additional validation: check for potentially dangerous characters
+    // (though in Apps Script context risk is minimal)
+    if (dedupeKey.length > 200) {
+      ui.alert('Ошибка', 'Ключ дедупликации слишком длинный (максимум 200 символов)', ui.ButtonSet.OK);
       return;
     }
     
