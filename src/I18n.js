@@ -45,6 +45,11 @@ var PF_I18N = {
       create_recurring: 'Создать регулярные платежи',
       apply_auto_categorization: 'Применить автокатегоризацию',
       quick_entry: 'Быстрый ввод транзакции',
+      export_menu: 'Экспорт',
+      export_transactions_csv: 'Транзакции (CSV)',
+      export_transactions_json: 'Транзакции (JSON)',
+      export_all_data_json: 'Все данные (JSON)',
+      create_backup: 'Создать резервную копию',
       language: 'Язык',
       lang_ru: 'Русский',
       lang_en: 'English'
@@ -132,6 +137,11 @@ var PF_I18N = {
       create_recurring: 'Create recurring transactions',
       apply_auto_categorization: 'Apply auto-categorization',
       quick_entry: 'Quick Transaction Entry',
+      export_menu: 'Export',
+      export_transactions_csv: 'Transactions (CSV)',
+      export_transactions_json: 'Transactions (JSON)',
+      export_all_data_json: 'All Data (JSON)',
+      create_backup: 'Create Backup',
       language: 'Language',
       lang_ru: 'Русский',
       lang_en: 'English'

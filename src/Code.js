@@ -28,6 +28,15 @@ function onOpen() {
   menu
     .addSubMenu(
       ui
+        .createMenu(pfT_('menu.export_menu'))
+        .addItem(pfT_('menu.export_transactions_csv'), 'pfExportTransactionsCSV')
+        .addItem(pfT_('menu.export_transactions_json'), 'pfExportTransactionsJSON')
+        .addItem(pfT_('menu.export_all_data_json'), 'pfExportAllDataJSON')
+        .addSeparator()
+        .addItem(pfT_('menu.create_backup'), 'pfCreateBackup')
+    )
+    .addSubMenu(
+      ui
         .createMenu(pfT_('menu.language'))
         .addItem(pfT_('menu.lang_ru'), 'pfSetLanguageRu')
         .addItem(pfT_('menu.lang_en'), 'pfSetLanguageEn')
