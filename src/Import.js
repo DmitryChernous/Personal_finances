@@ -276,6 +276,9 @@ function pfProcessImportData_(rawData, importer, options) {
  * @returns {Object} Map of dedupeKey -> true
  */
 function pfGetExistingTransactionKeys_() {
+  var startTime = new Date().getTime();
+  Logger.log('[KEYS] Starting to load existing transaction keys...');
+  
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   if (!ss) {
     pfLogWarning_('Cannot get spreadsheet in pfGetExistingTransactionKeys_', 'pfGetExistingTransactionKeys_');
@@ -284,12 +287,15 @@ function pfGetExistingTransactionKeys_() {
   
   var txSheet = pfFindSheetByKey_(ss, PF_SHEET_KEYS.TRANSACTIONS);
   if (!txSheet) {
+    Logger.log('[KEYS] Transactions sheet not found, returning empty keys');
     return {}; // Sheet doesn't exist yet, no existing keys
   }
   
   // Cache lastRow to avoid multiple calls
   var lastRow = txSheet.getLastRow();
+  Logger.log('[KEYS] Last row in sheet: ' + lastRow);
   if (lastRow <= 1) {
+    Logger.log('[KEYS] Sheet is empty or only has header, returning empty keys');
     return {}; // Only header or empty sheet
   }
   
@@ -309,13 +315,25 @@ function pfGetExistingTransactionKeys_() {
   // Optimize: only load columns we need instead of all columns
   // This significantly reduces memory and processing time for large sheets
   var numRows = lastRow - 1;
+  Logger.log('[KEYS] Processing ' + numRows + ' rows...');
+  
   if (numRows > 10000) {
     // For very large sheets, process in chunks to avoid timeout
+    Logger.log('[KEYS] Large sheet detected, using chunked processing');
     var chunkSize = 5000;
+    var chunkCount = Math.ceil(numRows / chunkSize);
+    Logger.log('[KEYS] Will process in ' + chunkCount + ' chunks of ' + chunkSize);
+    
     for (var chunkStart = 0; chunkStart < numRows; chunkStart += chunkSize) {
+      var chunkNum = Math.floor(chunkStart / chunkSize) + 1;
+      var chunkStartTime = new Date().getTime();
+      Logger.log('[KEYS] Processing chunk ' + chunkNum + ' of ' + chunkCount + ' (rows ' + (chunkStart + 1) + ' to ' + Math.min(chunkStart + chunkSize, numRows) + ')');
+      
       var chunkRows = Math.min(chunkSize, numRows - chunkStart);
       var chunkData = txSheet.getRange(2 + chunkStart, 1, chunkRows, PF_TRANSACTIONS_SCHEMA.columns.length).getValues();
+      Logger.log('[KEYS] Chunk ' + chunkNum + ': loaded ' + chunkData.length + ' rows, took ' + (new Date().getTime() - chunkStartTime) + 'ms');
       
+      var processStartTime = new Date().getTime();
       for (var i = 0; i < chunkData.length; i++) {
         var row = chunkData[i];
         var source = String(row[sourceCol - 1] || '').trim();
@@ -337,12 +355,21 @@ function pfGetExistingTransactionKeys_() {
         
         keys[dedupeKey] = true;
       }
+      Logger.log('[KEYS] Chunk ' + chunkNum + ': processed in ' + (new Date().getTime() - processStartTime) + 'ms, total keys so far: ' + Object.keys(keys).length);
     }
   } else {
     // For smaller sheets, load all at once (faster)
+    Logger.log('[KEYS] Small sheet, loading all at once');
+    var loadStartTime = new Date().getTime();
     var data = txSheet.getRange(2, 1, numRows, PF_TRANSACTIONS_SCHEMA.columns.length).getValues();
+    Logger.log('[KEYS] Loaded ' + data.length + ' rows in ' + (new Date().getTime() - loadStartTime) + 'ms');
     
+    var processStartTime = new Date().getTime();
     for (var i = 0; i < data.length; i++) {
+      if (i % 1000 === 0 && i > 0) {
+        Logger.log('[KEYS] Processed ' + i + ' of ' + data.length + ' rows, keys so far: ' + Object.keys(keys).length);
+      }
+      
       var row = data[i];
       var source = String(row[sourceCol - 1] || '').trim();
       
@@ -363,8 +390,11 @@ function pfGetExistingTransactionKeys_() {
       
       keys[dedupeKey] = true;
     }
+    Logger.log('[KEYS] Processed all rows in ' + (new Date().getTime() - processStartTime) + 'ms');
   }
   
+  var totalTime = new Date().getTime() - startTime;
+  Logger.log('[KEYS] Completed loading keys: ' + Object.keys(keys).length + ' keys in ' + totalTime + 'ms');
   return keys;
 }
 
@@ -990,19 +1020,31 @@ function pfProcessDataBatch(rawDataJson, importerType, options, batchSize, start
     
     Logger.log('[SERVER] Starting to process ' + rawData.length + ' items...');
     var processStartTime = new Date().getTime();
+    Logger.log('[SERVER] Batch processing start time: ' + new Date().toISOString());
     
     // Process all items in the batch (rawData is already the batch)
     for (var i = 0; i < rawData.length; i++) {
       try {
-        if (i % 50 === 0) {
-          Logger.log('[SERVER] Processing item ' + i + ' of ' + rawData.length);
+        if (i % 10 === 0 || i === 0) {
+          var elapsed = new Date().getTime() - processStartTime;
+          Logger.log('[SERVER] Processing item ' + (i + 1) + ' of ' + rawData.length + ' (elapsed: ' + elapsed + 'ms)');
         }
         
+        var normalizeStartTime = new Date().getTime();
         var transaction = importer.normalize(rawData[i], options);
+        var normalizeTime = new Date().getTime() - normalizeStartTime;
+        if (normalizeTime > 100) {
+          Logger.log('[SERVER] WARNING: normalize took ' + normalizeTime + 'ms for item ' + (i + 1));
+        }
         
         // Apply auto-categorization if category is not set
         if (!transaction.category || String(transaction.category).trim() === '') {
+          var categoryStartTime = new Date().getTime();
           transaction = pfApplyCategoryRules_(transaction, ss);
+          var categoryTime = new Date().getTime() - categoryStartTime;
+          if (categoryTime > 100) {
+            Logger.log('[SERVER] WARNING: category rules took ' + categoryTime + 'ms for item ' + (i + 1));
+          }
         }
         
         var dedupeKey = importer.dedupeKey(transaction);
@@ -1028,6 +1070,7 @@ function pfProcessDataBatch(rawDataJson, importerType, options, batchSize, start
         
         transactions.push(transaction);
       } catch (e) {
+        Logger.log('[SERVER] ERROR processing item ' + (i + 1) + ': ' + e.toString());
         pfLogError_(e, 'pfProcessDataBatch', PF_LOG_LEVEL.ERROR);
         stats.errors++;
         transactions.push({
@@ -1046,6 +1089,9 @@ function pfProcessDataBatch(rawDataJson, importerType, options, batchSize, start
     
     // Calculate processed count (startIndex + batch length)
     var processed = (options._startIndex || startIndex) + rawData.length;
+    var totalTime = new Date().getTime() - processStartTime;
+    Logger.log('[SERVER] Batch processing completed: ' + rawData.length + ' items in ' + totalTime + 'ms');
+    Logger.log('[SERVER] Stats: valid=' + stats.valid + ', needsReview=' + stats.needsReview + ', duplicates=' + stats.duplicates + ', errors=' + stats.errors);
     var totalCount = options._totalCount || rawData.length;
     
     var result = {
