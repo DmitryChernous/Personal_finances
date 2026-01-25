@@ -1,0 +1,458 @@
+/**
+ * Import framework for bank statements and transaction files.
+ *
+ * Architecture:
+ * - DTO (Data Transfer Object) for normalized transactions
+ * - Base importer interface
+ * - Staging sheet (Import_Raw) for intermediate data
+ * - Preview and Commit workflow
+ * - Deduplication by SourceId/hash
+ */
+
+/**
+ * Internal DTO for a transaction (normalized format).
+ * This is the standard format all importers should produce.
+ * @typedef {Object} TransactionDTO
+ * @property {Date} date - Transaction date
+ * @property {string} type - 'expense', 'income', or 'transfer'
+ * @property {string} account - Source account name
+ * @property {string} [accountTo] - Destination account (for transfers)
+ * @property {number} amount - Transaction amount (always positive)
+ * @property {string} currency - Currency code (RUB, USD, EUR, etc.)
+ * @property {string} [category] - Category name
+ * @property {string} [subcategory] - Subcategory name
+ * @property {string} [merchant] - Merchant/place name
+ * @property {string} [description] - Transaction description
+ * @property {string} [tags] - Comma-separated tags
+ * @property {string} source - Source identifier (e.g., 'import:csv', 'import:sberbank')
+ * @property {string} [sourceId] - Unique ID from source (for deduplication)
+ * @property {string} [rawData] - Original raw data (for debugging/review)
+ * @property {Array<{field: string, message: string}>} [errors] - Parsing errors
+ */
+
+/**
+ * Base importer interface.
+ * All importers should implement these methods.
+ * @interface
+ */
+var PF_IMPORTER_INTERFACE = {
+  /**
+   * Detect if this importer can handle the given file/data.
+   * @param {Blob|string|Array<Array<*>>} data - File blob, file content, or array of rows
+   * @param {string} [fileName] - Optional file name for detection
+   * @returns {boolean} True if this importer can handle the data
+   */
+  detect: function(data, fileName) { return false; },
+
+  /**
+   * Parse the data into raw transaction objects.
+   * @param {Blob|string|Array<Array<*>>} data - File blob, file content, or array of rows
+   * @param {Object} [options] - Parser options (column mapping, etc.)
+   * @returns {Array<Object>} Array of raw transaction objects (not yet normalized)
+   */
+  parse: function(data, options) { return []; },
+
+  /**
+   * Normalize raw transaction into DTO format.
+   * @param {Object} rawTransaction - Raw transaction from parse()
+   * @param {Object} [options] - Normalization options (default account, currency, etc.)
+   * @returns {TransactionDTO} Normalized transaction DTO
+   */
+  normalize: function(rawTransaction, options) { return null; },
+
+  /**
+   * Generate deduplication key for a transaction.
+   * @param {TransactionDTO} transaction - Normalized transaction
+   * @returns {string} Unique key for deduplication
+   */
+  dedupeKey: function(transaction) { return ''; }
+};
+
+/**
+ * Creates a deduplication key from transaction data.
+ * Uses: date + account + amount + sourceId (if available) or hash of key fields.
+ * @param {TransactionDTO} transaction
+ * @returns {string}
+ */
+function pfGenerateDedupeKey_(transaction) {
+  if (transaction.sourceId) {
+    return transaction.source + ':' + transaction.sourceId;
+  }
+  
+  // Fallback: hash of key fields
+  var keyFields = [
+    transaction.date ? Utilities.formatDate(transaction.date, Session.getScriptTimeZone(), 'yyyy-MM-dd') : '',
+    transaction.account || '',
+    String(transaction.amount || ''),
+    transaction.type || ''
+  ].join('|');
+  
+  return transaction.source + ':' + Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, keyFields).map(function(b) {
+    return ('0' + (b & 0xFF).toString(16)).slice(-2);
+  }).join('');
+}
+
+/**
+ * Validates a transaction DTO.
+ * @param {TransactionDTO} transaction
+ * @returns {Array<{field: string, message: string}>} Array of validation errors
+ */
+function pfValidateTransactionDTO_(transaction) {
+  var errors = [];
+  
+  if (!transaction.date || !(transaction.date instanceof Date)) {
+    errors.push({ field: 'Date', message: 'Дата обязательна и должна быть валидной' });
+  }
+  
+  if (!transaction.type || !['expense', 'income', 'transfer'].includes(transaction.type)) {
+    errors.push({ field: 'Type', message: 'Тип должен быть expense, income или transfer' });
+  }
+  
+  if (!transaction.account || String(transaction.account).trim() === '') {
+    errors.push({ field: 'Account', message: 'Счет обязателен' });
+  }
+  
+  if (transaction.type === 'transfer' && (!transaction.accountTo || String(transaction.accountTo).trim() === '')) {
+    errors.push({ field: 'AccountTo', message: 'Для перевода обязателен счет получателя' });
+  }
+  
+  if (!transaction.amount || transaction.amount <= 0 || isNaN(transaction.amount)) {
+    errors.push({ field: 'Amount', message: 'Сумма должна быть положительным числом' });
+  }
+  
+  if (!transaction.currency || String(transaction.currency).trim() === '') {
+    errors.push({ field: 'Currency', message: 'Валюта обязательна' });
+  }
+  
+  if (!transaction.source || String(transaction.source).trim() === '') {
+    errors.push({ field: 'Source', message: 'Источник обязателен' });
+  }
+  
+  return errors;
+}
+
+/**
+ * Converts a TransactionDTO to a row array matching PF_TRANSACTIONS_SCHEMA.
+ * @param {TransactionDTO} transaction
+ * @returns {Array<*>} Row array with values in schema order
+ */
+function pfTransactionDTOToRow_(transaction) {
+  var row = [];
+  var schema = PF_TRANSACTIONS_SCHEMA;
+  
+  for (var i = 0; i < schema.columns.length; i++) {
+    var col = schema.columns[i];
+    var value = transaction[col.key];
+    
+    // Handle special cases
+    if (col.key === 'Date' && value instanceof Date) {
+      row.push(value);
+    } else if (col.key === 'Amount' && typeof value === 'number') {
+      row.push(value);
+    } else if (value === null || value === undefined) {
+      row.push('');
+    } else {
+      row.push(String(value));
+    }
+  }
+  
+  return row;
+}
+
+/**
+ * Ensures Import_Raw staging sheet exists.
+ * @param {GoogleAppsScript.Spreadsheet.Spreadsheet} ss
+ * @returns {GoogleAppsScript.Spreadsheet.Sheet}
+ */
+function pfEnsureImportRawSheet_(ss) {
+  var sheet = pfFindOrCreateSheetByKey_(ss, PF_SHEET_KEYS.IMPORT_RAW);
+  
+  // Set headers if empty
+  if (sheet.getLastRow() === 0) {
+    var headers = [];
+    for (var i = 0; i < PF_TRANSACTIONS_SCHEMA.columns.length; i++) {
+      headers.push(pfT_('columns.' + PF_TRANSACTIONS_SCHEMA.columns[i].key));
+    }
+    // Add extra columns for import metadata
+    headers.push('Ошибки парсинга');
+    headers.push('Ключ дедупликации');
+    sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+    sheet.setFrozenRows(1);
+  }
+  
+  return sheet;
+}
+
+/**
+ * Process imported data: parse, normalize, validate, deduplicate.
+ * @param {Array<Object>} rawData - Raw data from importer
+ * @param {Object} importer - Importer object (e.g., PF_CSV_IMPORTER)
+ * @param {Object} options - Import options
+ * @returns {Object} {transactions: Array<TransactionDTO>, stats: Object}
+ */
+function pfProcessImportData_(rawData, importer, options) {
+  options = options || {};
+  var transactions = [];
+  var stats = {
+    total: rawData.length,
+    valid: 0,
+    needsReview: 0,
+    duplicates: 0,
+    errors: 0
+  };
+  
+  // Get existing transaction keys for deduplication
+  var existingKeys = pfGetExistingTransactionKeys_();
+  
+  for (var i = 0; i < rawData.length; i++) {
+    try {
+      // Normalize
+      var transaction = importer.normalize(rawData[i], options);
+      
+      // Check for duplicates
+      var dedupeKey = importer.dedupeKey(transaction);
+      if (existingKeys[dedupeKey]) {
+        transaction.status = 'duplicate';
+        stats.duplicates++;
+      } else {
+        existingKeys[dedupeKey] = true;
+      }
+      
+      // Count by status
+      if (transaction.errors && transaction.errors.length > 0) {
+        transaction.status = 'needs_review';
+        stats.needsReview++;
+        stats.errors++;
+      } else if (transaction.status === 'ok') {
+        stats.valid++;
+      }
+      
+      transactions.push(transaction);
+    } catch (e) {
+      stats.errors++;
+      // Create error transaction
+      transactions.push({
+        date: new Date(),
+        type: 'expense',
+        account: '',
+        amount: 0,
+        currency: 'RUB',
+        source: options.source || 'import:error',
+        status: 'needs_review',
+        errors: [{ field: 'General', message: 'Ошибка парсинга: ' + e.toString() }],
+        rawData: JSON.stringify(rawData[i])
+      });
+    }
+  }
+  
+  return { transactions: transactions, stats: stats };
+}
+
+/**
+ * Get existing transaction deduplication keys.
+ * @returns {Object} Map of dedupeKey -> true
+ */
+function pfGetExistingTransactionKeys_() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var txSheet = pfFindSheetByKey_(ss, PF_SHEET_KEYS.TRANSACTIONS);
+  if (!txSheet || txSheet.getLastRow() <= 1) return {};
+  
+  var keys = {};
+  var sourceCol = pfColumnIndex_(PF_TRANSACTIONS_SCHEMA, 'Source');
+  var sourceIdCol = pfColumnIndex_(PF_TRANSACTIONS_SCHEMA, 'SourceId');
+  var dateCol = pfColumnIndex_(PF_TRANSACTIONS_SCHEMA, 'Date');
+  var accountCol = pfColumnIndex_(PF_TRANSACTIONS_SCHEMA, 'Account');
+  var amountCol = pfColumnIndex_(PF_TRANSACTIONS_SCHEMA, 'Amount');
+  var typeCol = pfColumnIndex_(PF_TRANSACTIONS_SCHEMA, 'Type');
+  
+  if (!sourceCol || !dateCol || !accountCol || !amountCol || !typeCol) return {};
+  
+  var data = txSheet.getRange(2, 1, txSheet.getLastRow() - 1, PF_TRANSACTIONS_SCHEMA.columns.length).getValues();
+  
+  for (var i = 0; i < data.length; i++) {
+    var row = data[i];
+    var source = row[sourceCol - 1];
+    var sourceId = sourceIdCol ? row[sourceIdCol - 1] : null;
+    
+    if (sourceId) {
+      keys[source + ':' + sourceId] = true;
+    } else {
+      // Generate hash key
+      var date = row[dateCol - 1];
+      var account = row[accountCol - 1];
+      var amount = row[amountCol - 1];
+      var type = row[typeCol - 1];
+      
+      var keyFields = [
+        date ? Utilities.formatDate(date, Session.getScriptTimeZone(), 'yyyy-MM-dd') : '',
+        account || '',
+        String(amount || ''),
+        type || ''
+      ].join('|');
+      
+      var hash = Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, keyFields).map(function(b) {
+        return ('0' + (b & 0xFF).toString(16)).slice(-2);
+      }).join('');
+      
+      keys[(source || 'unknown') + ':' + hash] = true;
+    }
+  }
+  
+  return keys;
+}
+
+/**
+ * Preview import: show what will be imported without committing.
+ * @param {Array<TransactionDTO>} transactions
+ * @returns {Object} Preview data for UI
+ */
+function pfPreviewImport_(transactions) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var stagingSheet = pfEnsureImportRawSheet_(ss);
+  
+  // Clear existing staging data
+  if (stagingSheet.getLastRow() > 1) {
+    stagingSheet.deleteRows(2, stagingSheet.getLastRow() - 1);
+  }
+  
+  // Write transactions to staging sheet
+  var rows = [];
+  for (var i = 0; i < transactions.length; i++) {
+    var tx = transactions[i];
+    var row = pfTransactionDTOToRow_(tx);
+    
+    // Add error column
+    var errorText = '';
+    if (tx.errors && tx.errors.length > 0) {
+      errorText = tx.errors.map(function(e) { return e.field + ': ' + e.message; }).join('; ');
+    }
+    row.push(errorText);
+    
+    // Add dedupe key
+    row.push(pfGenerateDedupeKey_(tx));
+    
+    rows.push(row);
+  }
+  
+  if (rows.length > 0) {
+    stagingSheet.getRange(2, 1, rows.length, rows[0].length).setValues(rows);
+    
+    // Format error column
+    var errorCol = PF_TRANSACTIONS_SCHEMA.columns.length + 1;
+    var errorRange = stagingSheet.getRange(2, errorCol, rows.length, 1);
+    errorRange.setFontColor('#CC0000');
+    
+    // Highlight rows with errors
+    for (var i = 0; i < rows.length; i++) {
+      if (transactions[i].errors && transactions[i].errors.length > 0) {
+        stagingSheet.getRange(i + 2, 1, 1, rows[0].length).setBackground('#FFE6E6');
+      } else if (transactions[i].status === 'duplicate') {
+        stagingSheet.getRange(i + 2, 1, 1, rows[0].length).setBackground('#FFFFE6');
+      }
+    }
+  }
+  
+  // Calculate stats
+  var stats = {
+    total: transactions.length,
+    valid: 0,
+    needsReview: 0,
+    duplicates: 0
+  };
+  
+  for (var i = 0; i < transactions.length; i++) {
+    var tx = transactions[i];
+    if (tx.status === 'ok') stats.valid++;
+    else if (tx.status === 'needs_review') stats.needsReview++;
+    else if (tx.status === 'duplicate') stats.duplicates++;
+  }
+  
+  return {
+    stats: stats,
+    stagingSheetName: stagingSheet.getName()
+  };
+}
+
+/**
+ * Commit import: move valid transactions from staging to Transactions sheet.
+ * @param {boolean} includeNeedsReview - Include transactions marked for review
+ * @returns {Object} Commit result
+ */
+function pfCommitImport_(includeNeedsReview) {
+  includeNeedsReview = includeNeedsReview || false;
+  
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var stagingSheet = pfFindSheetByKey_(ss, PF_SHEET_KEYS.IMPORT_RAW);
+  if (!stagingSheet || stagingSheet.getLastRow() <= 1) {
+    return { success: false, message: 'Нет данных для импорта' };
+  }
+  
+  var txSheet = pfFindOrCreateSheetByKey_(ss, PF_SHEET_KEYS.TRANSACTIONS);
+  var data = stagingSheet.getRange(2, 1, stagingSheet.getLastRow() - 1, PF_TRANSACTIONS_SCHEMA.columns.length).getValues();
+  var statusCol = stagingSheet.getLastColumn() - 1; // Status is in transactions schema
+  var errorCol = stagingSheet.getLastColumn() - 1; // Error column is last-1, dedupe is last
+  
+  var rowsToAdd = [];
+  var stats = {
+    added: 0,
+    skipped: 0,
+    needsReview: 0
+  };
+  
+  for (var i = 0; i < data.length; i++) {
+    var row = data[i];
+    var statusValue = stagingSheet.getRange(i + 2, statusCol).getValue();
+    var hasErrors = stagingSheet.getRange(i + 2, errorCol).getValue() !== '';
+    
+    // Skip duplicates
+    if (statusValue === 'duplicate') {
+      stats.skipped++;
+      continue;
+    }
+    
+    // Skip needs_review if not including
+    if (statusValue === 'needs_review' && !includeNeedsReview) {
+      stats.needsReview++;
+      continue;
+    }
+    
+    // Add transaction
+    rowsToAdd.push(row);
+    stats.added++;
+  }
+  
+  if (rowsToAdd.length > 0) {
+    var lastRow = txSheet.getLastRow();
+    txSheet.getRange(lastRow + 1, 1, rowsToAdd.length, rowsToAdd[0].length).setValues(rowsToAdd);
+    
+    // Normalize and validate added rows
+    for (var i = 0; i < rowsToAdd.length; i++) {
+      pfNormalizeTransactionRow_(txSheet, lastRow + 1 + i);
+      var errors = pfValidateTransactionRow_(txSheet, lastRow + 1 + i);
+      pfHighlightErrors_(txSheet, lastRow + 1 + i, errors);
+    }
+  }
+  
+  // Clear staging sheet
+  if (stagingSheet.getLastRow() > 1) {
+    stagingSheet.deleteRows(2, stagingSheet.getLastRow() - 1);
+  }
+  
+  return {
+    success: true,
+    stats: stats,
+    message: 'Импортировано: ' + stats.added + ' транзакций. Пропущено: ' + stats.skipped + '. На проверку: ' + stats.needsReview
+  };
+}
+
+/**
+ * Main entry point for import workflow.
+ * Shows UI for file selection and import.
+ */
+function pfImportTransactions() {
+  // This will be called from menu, opens HTML sidebar
+  var html = HtmlService.createHtmlOutputFromFile('ImportUI')
+    .setTitle('Импорт транзакций')
+    .setWidth(400);
+  SpreadsheetApp.getUi().showSidebar(html);
+}

@@ -21,7 +21,8 @@ var PF_SHEET_KEYS = {
   ACCOUNTS: 'accounts',
   REPORTS: 'reports',
   DASHBOARD: 'dashboard',
-  HELP: 'help'
+  HELP: 'help',
+  IMPORT_RAW: 'import_raw'
 };
 
 var PF_I18N = {
@@ -34,6 +35,7 @@ var PF_I18N = {
       refresh_reports: 'Обновить отчёты',
       refresh_dashboard: 'Обновить дашборд',
       generate_test_data: 'Заполнить тестовыми данными',
+      import_transactions: 'Импорт транзакций',
       language: 'Язык',
       lang_ru: 'Русский',
       lang_en: 'English'
@@ -45,7 +47,8 @@ var PF_I18N = {
       accounts: 'Счета',
       reports: 'Отчеты',
       dashboard: 'Дашборд',
-      help: 'Инструкция'
+      help: 'Инструкция',
+      import_raw: 'Импорт (черновик)'
     },
     columns: {
       Date: 'Дата',
@@ -77,6 +80,7 @@ var PF_I18N = {
       refresh_reports: 'Refresh reports',
       refresh_dashboard: 'Refresh dashboard',
       generate_test_data: 'Generate test data',
+      import_transactions: 'Import transactions',
       language: 'Language',
       lang_ru: 'Русский',
       lang_en: 'English'
@@ -88,7 +92,8 @@ var PF_I18N = {
       accounts: 'Accounts',
       reports: 'Reports',
       dashboard: 'Dashboard',
-      help: 'Help'
+      help: 'Help',
+      import_raw: 'Import (Staging)'
     },
     columns: {
       Date: 'Date',

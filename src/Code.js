@@ -13,6 +13,8 @@ function onOpen() {
   menu.addItem(pfT_('menu.refresh_reports'), 'pfRefreshReports');
   menu.addItem(pfT_('menu.refresh_dashboard'), 'pfRefreshDashboard');
   menu.addSeparator();
+  menu.addItem(pfT_('menu.import_transactions'), 'pfImportTransactions');
+  menu.addSeparator();
   menu.addItem(pfT_('menu.generate_test_data'), 'pfGenerateTestData');
 
   menu
