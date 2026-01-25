@@ -538,112 +538,162 @@ function pfParseFileContent(fileContent, importerType, options) {
  * @returns {Object} {transactions: Array, stats: Object, processed: number, total: number, hasMore: boolean}
  */
 function pfProcessDataBatch(rawDataJson, importerType, options, batchSize, startIndex) {
-  // Валидация входных данных
-  if (!rawDataJson || typeof rawDataJson !== 'string') {
-    throw new Error('rawDataJson must be a non-empty string');
-  }
-  if (!importerType || !['sberbank', 'csv'].includes(importerType)) {
-    throw new Error('Invalid importerType: ' + importerType);
-  }
-  batchSize = batchSize || 100;
-  if (batchSize < 1 || batchSize > 1000) {
-    throw new Error('batchSize must be between 1 and 1000');
-  }
-  startIndex = startIndex || 0;
-  options = options || {};
+  Logger.log('[SERVER] pfProcessDataBatch called at ' + new Date().toISOString());
+  Logger.log('[SERVER] Parameters: importerType=' + importerType + ', batchSize=' + batchSize + ', startIndex=' + startIndex);
+  Logger.log('[SERVER] rawDataJson length: ' + (rawDataJson ? rawDataJson.length : 0));
   
-  // Parse JSON string back to array
-  // Note: rawDataJson now contains only the batch data, not the entire array
-  var rawData = null;
   try {
-    rawData = JSON.parse(rawDataJson);
-  } catch (e) {
-    throw new Error('Invalid JSON in rawDataJson: ' + e.toString());
-  }
-  
-  if (!Array.isArray(rawData)) {
-    throw new Error('rawData must be an array');
-  }
-  
-  // Get importer
-  var importer = null;
-  if (importerType === 'sberbank') {
-    importer = PF_SBERBANK_IMPORTER;
-  } else if (importerType === 'csv') {
-    importer = PF_CSV_IMPORTER;
-  } else {
-    throw new Error('Неизвестный тип импортера: ' + importerType);
-  }
-  
-  var sourceName = importerType === 'sberbank' ? 'import:sberbank' : 'import:csv';
-  var transactions = [];
-  var stats = {
-    valid: 0,
-    needsReview: 0,
-    duplicates: 0,
-    errors: 0
-  };
-  
-  // Get existing keys from options (always passed from client after first load)
-  // If not provided, start with empty object (no existing transactions to check)
-  var existingKeys = null;
-  if (options._existingKeys && typeof options._existingKeys === 'object') {
-    existingKeys = options._existingKeys;
-  } else {
-    // No keys provided - start with empty (will accumulate during processing)
-    existingKeys = {};
-  }
-  
-  // Process all items in the batch (rawData is already the batch)
-  for (var i = 0; i < rawData.length; i++) {
-    try {
-      var transaction = importer.normalize(rawData[i], options);
-      var dedupeKey = importer.dedupeKey(transaction);
-      
-      if (existingKeys[dedupeKey]) {
-        transaction.status = 'duplicate';
-        stats.duplicates++;
-      } else {
-        existingKeys[dedupeKey] = true;
-      }
-      
-      if (transaction.errors && transaction.errors.length > 0) {
-        transaction.status = 'needs_review';
-        stats.needsReview++;
-        stats.errors++;
-      } else if (transaction.status === 'ok') {
-        stats.valid++;
-      }
-      
-      transactions.push(transaction);
-    } catch (e) {
-      stats.errors++;
-      transactions.push({
-        date: new Date(),
-        type: 'expense',
-        account: '',
-        amount: 0,
-        currency: 'RUB',
-        source: sourceName,
-        status: 'needs_review',
-        errors: [{ field: 'General', message: 'Ошибка парсинга (строка ' + (i + 1) + '): ' + e.toString() }],
-        rawData: JSON.stringify(rawData[i])
-      });
+    // Валидация входных данных
+    if (!rawDataJson || typeof rawDataJson !== 'string') {
+      Logger.log('[SERVER] ERROR: rawDataJson validation failed');
+      throw new Error('rawDataJson must be a non-empty string');
     }
+    if (!importerType || !['sberbank', 'csv'].includes(importerType)) {
+      Logger.log('[SERVER] ERROR: Invalid importerType: ' + importerType);
+      throw new Error('Invalid importerType: ' + importerType);
+    }
+    batchSize = batchSize || 100;
+    if (batchSize < 1 || batchSize > 1000) {
+      Logger.log('[SERVER] ERROR: Invalid batchSize: ' + batchSize);
+      throw new Error('batchSize must be between 1 and 1000');
+    }
+    startIndex = startIndex || 0;
+    options = options || {};
+    
+    Logger.log('[SERVER] Validation passed');
+    
+    // Parse JSON string back to array
+    // Note: rawDataJson now contains only the batch data, not the entire array
+    var rawData = null;
+    try {
+      Logger.log('[SERVER] Parsing JSON...');
+      rawData = JSON.parse(rawDataJson);
+      Logger.log('[SERVER] JSON parsed successfully, array length: ' + rawData.length);
+    } catch (e) {
+      Logger.log('[SERVER] ERROR: JSON parse failed: ' + e.toString());
+      throw new Error('Invalid JSON in rawDataJson: ' + e.toString());
+    }
+    
+    if (!Array.isArray(rawData)) {
+      Logger.log('[SERVER] ERROR: rawData is not an array');
+      throw new Error('rawData must be an array');
+    }
+    
+    // Get importer
+    Logger.log('[SERVER] Getting importer...');
+    var importer = null;
+    if (importerType === 'sberbank') {
+      importer = PF_SBERBANK_IMPORTER;
+      Logger.log('[SERVER] Using Sberbank importer');
+    } else if (importerType === 'csv') {
+      importer = PF_CSV_IMPORTER;
+      Logger.log('[SERVER] Using CSV importer');
+    } else {
+      Logger.log('[SERVER] ERROR: Unknown importer type');
+      throw new Error('Неизвестный тип импортера: ' + importerType);
+    }
+    
+    if (!importer) {
+      Logger.log('[SERVER] ERROR: Importer is null/undefined');
+      throw new Error('Importer not found');
+    }
+    
+    var sourceName = importerType === 'sberbank' ? 'import:sberbank' : 'import:csv';
+    var transactions = [];
+    var stats = {
+      valid: 0,
+      needsReview: 0,
+      duplicates: 0,
+      errors: 0
+    };
+    
+    // Get existing keys from options (always passed from client after first load)
+    // If not provided, start with empty object (no existing transactions to check)
+    Logger.log('[SERVER] Getting existing keys...');
+    var existingKeys = null;
+    if (options._existingKeys && typeof options._existingKeys === 'object') {
+      existingKeys = options._existingKeys;
+      Logger.log('[SERVER] Using keys from options, count: ' + Object.keys(existingKeys).length);
+    } else {
+      // No keys provided - start with empty (will accumulate during processing)
+      existingKeys = {};
+      Logger.log('[SERVER] Starting with empty keys object');
+    }
+    
+    Logger.log('[SERVER] Starting to process ' + rawData.length + ' items...');
+    var processStartTime = new Date().getTime();
+    
+    // Process all items in the batch (rawData is already the batch)
+    for (var i = 0; i < rawData.length; i++) {
+      try {
+        if (i % 50 === 0) {
+          Logger.log('[SERVER] Processing item ' + i + ' of ' + rawData.length);
+        }
+        
+        var transaction = importer.normalize(rawData[i], options);
+        var dedupeKey = importer.dedupeKey(transaction);
+        
+        if (existingKeys[dedupeKey]) {
+          transaction.status = 'duplicate';
+          stats.duplicates++;
+        } else {
+          existingKeys[dedupeKey] = true;
+        }
+        
+        if (transaction.errors && transaction.errors.length > 0) {
+          transaction.status = 'needs_review';
+          stats.needsReview++;
+          stats.errors++;
+        } else if (transaction.status === 'ok') {
+          stats.valid++;
+        }
+        
+        transactions.push(transaction);
+      } catch (e) {
+        Logger.log('[SERVER] ERROR processing item ' + i + ': ' + e.toString());
+        stats.errors++;
+        transactions.push({
+          date: new Date(),
+          type: 'expense',
+          account: '',
+          amount: 0,
+          currency: 'RUB',
+          source: sourceName,
+          status: 'needs_review',
+          errors: [{ field: 'General', message: 'Ошибка парсинга (строка ' + (i + 1) + '): ' + e.toString() }],
+          rawData: JSON.stringify(rawData[i])
+        });
+      }
+    }
+    
+    var processDuration = new Date().getTime() - processStartTime;
+    Logger.log('[SERVER] Processing completed in ' + processDuration + 'ms');
+    Logger.log('[SERVER] Results: transactions=' + transactions.length + ', stats=' + JSON.stringify(stats));
+    
+    // Calculate processed count (startIndex + batch length)
+    var processed = (options._startIndex || startIndex) + rawData.length;
+    var totalCount = options._totalCount || rawData.length;
+    
+    Logger.log('[SERVER] Calculated: processed=' + processed + ', totalCount=' + totalCount + ', hasMore=' + (processed < totalCount));
+    Logger.log('[SERVER] Returning result...');
+    
+    var result = {
+      transactions: transactions,
+      stats: stats,
+      processed: processed,
+      total: totalCount,
+      hasMore: processed < totalCount,
+      existingKeys: existingKeys // Return updated keys for next batch
+    };
+    
+    Logger.log('[SERVER] pfProcessDataBatch completed successfully');
+    return result;
+    
+  } catch (e) {
+    Logger.log('[SERVER] FATAL ERROR in pfProcessDataBatch: ' + e.toString());
+    Logger.log('[SERVER] Error stack: ' + (e.stack || 'No stack'));
+    throw e;
   }
-  
-  // Calculate processed count (startIndex + batch length)
-  var processed = (options._startIndex || startIndex) + rawData.length;
-  var totalCount = options._totalCount || rawData.length;
-  
-  return {
-    transactions: transactions,
-    stats: stats,
-    processed: processed,
-    total: totalCount,
-    hasMore: processed < totalCount,
-    existingKeys: existingKeys // Return updated keys for next batch
-  };
 }
 
 /**
@@ -750,7 +800,16 @@ function pfProcessFileImport_(fileContent, options) {
  * @returns {Object} Map of dedupeKey -> true
  */
 function pfGetExistingTransactionKeys() {
-  return pfGetExistingTransactionKeys_();
+  Logger.log('[SERVER] pfGetExistingTransactionKeys called at ' + new Date().toISOString());
+  try {
+    var keys = pfGetExistingTransactionKeys_();
+    Logger.log('[SERVER] pfGetExistingTransactionKeys completed, keys count: ' + Object.keys(keys).length);
+    return keys;
+  } catch (e) {
+    Logger.log('[SERVER] ERROR in pfGetExistingTransactionKeys: ' + e.toString());
+    Logger.log('[SERVER] Error stack: ' + (e.stack || 'No stack'));
+    throw e;
+  }
 }
 
 /**

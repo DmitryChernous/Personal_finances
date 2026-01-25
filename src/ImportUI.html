@@ -394,24 +394,38 @@
       options._totalCount = totalCount;
       
       // Load existing keys ONCE before processing batches (to avoid calling slow function on each batch)
+      console.log('[CLIENT] Starting to load existing keys...');
       updateProgress('Загрузка существующих транзакций для проверки дубликатов...', 16);
+      
+      var keysLoadStartTime = Date.now();
       google.script.run
         .withSuccessHandler(function(keys) {
+          var keysLoadDuration = Date.now() - keysLoadStartTime;
+          console.log('[CLIENT] Keys loaded successfully in', keysLoadDuration, 'ms');
+          console.log('[CLIENT] Keys count:', keys ? Object.keys(keys).length : 0);
           existingKeys = keys || {};
           // Start processing batches
+          console.log('[CLIENT] Starting first batch processing...');
           processNextBatch();
         })
         .withFailureHandler(function(error) {
+          var keysLoadDuration = Date.now() - keysLoadStartTime;
+          console.error('[CLIENT] Failed to load keys after', keysLoadDuration, 'ms');
+          console.error('[CLIENT] Keys load error:', error);
           // If loading keys fails, start with empty keys (will still work, just won't detect duplicates with existing)
-          console.warn('Failed to load existing keys:', error);
+          console.warn('[CLIENT] Starting with empty keys due to error');
           existingKeys = {};
           processNextBatch();
         })
         .pfGetExistingTransactionKeys();
       
+      console.log('[CLIENT] pfGetExistingTransactionKeys call initiated');
+      
       return; // Don't call processNextBatch() here - it will be called after keys are loaded
       
       function processNextBatch() {
+        console.log('[CLIENT] processNextBatch called, processed:', processed, 'totalCount:', totalCount);
+        
         // Clear any existing timeout
         if (timeoutId) {
           clearTimeout(timeoutId);
@@ -419,6 +433,7 @@
         }
         
         if (processed >= totalCount) {
+          console.log('[CLIENT] All processed, writing preview');
           // All processed, write preview
           writePreview();
           return;
@@ -433,6 +448,14 @@
         var batchEnd = Math.min(processed + batchSize, totalCount);
         var batchData = rawData.slice(processed, batchEnd);
         
+        console.log('[CLIENT] Batch data extracted:', {
+          processed: processed,
+          batchEnd: batchEnd,
+          batchSize: batchData.length,
+          totalCount: totalCount,
+          existingKeysCount: existingKeys ? Object.keys(existingKeys).length : 0
+        });
+        
         // Process batch - pass only the batch data, not entire array
         // Also pass current processed count and existing keys so server knows the offset
         var batchOptions = Object.assign({}, options);
@@ -440,15 +463,38 @@
         // Always pass existingKeys (loaded once at the beginning)
         batchOptions._existingKeys = existingKeys || {};
         
+        console.log('[CLIENT] Calling pfProcessDataBatch with:', {
+          batchDataLength: batchData.length,
+          importerType: importerType,
+          batchSize: batchSize,
+          processed: processed,
+          optionsKeys: Object.keys(batchOptions)
+        });
+        
         // Set timeout (5 minutes)
         timeoutId = setTimeout(function() {
+          console.error('[CLIENT] TIMEOUT after 5 minutes!');
           hideProgress();
           showError('Таймаут при обработке (5 минут). Попробуйте уменьшить размер файла или разбить его на части.');
           document.getElementById('previewBtn').disabled = false;
         }, 300000);
         
+        var callStartTime = Date.now();
+        console.log('[CLIENT] Starting google.script.run.pfProcessDataBatch at', new Date().toISOString());
+        
         google.script.run
           .withSuccessHandler(function(batchResult) {
+            var callDuration = Date.now() - callStartTime;
+            console.log('[CLIENT] pfProcessDataBatch SUCCESS after', callDuration, 'ms');
+            console.log('[CLIENT] Batch result:', {
+              transactionsCount: batchResult.transactions ? batchResult.transactions.length : 0,
+              stats: batchResult.stats,
+              processed: batchResult.processed,
+              total: batchResult.total,
+              hasMore: batchResult.hasMore,
+              existingKeysCount: batchResult.existingKeys ? Object.keys(batchResult.existingKeys).length : 0
+            });
+            
             if (timeoutId) {
               clearTimeout(timeoutId);
               timeoutId = null;
@@ -461,6 +507,12 @@
             totalStats.errors += batchResult.stats.errors;
             processed = batchResult.processed;
             
+            console.log('[CLIENT] Updated totals:', {
+              allTransactionsCount: allTransactions.length,
+              totalStats: totalStats,
+              processed: processed
+            });
+            
             // Update existing keys for next batch
             if (batchResult.existingKeys) {
               existingKeys = batchResult.existingKeys;
@@ -468,28 +520,37 @@
             
             // Continue with next batch
             if (batchResult.hasMore) {
+              console.log('[CLIENT] Has more batches, continuing...');
               setTimeout(processNextBatch, 50); // Small delay to allow UI update
             } else {
+              console.log('[CLIENT] No more batches, writing preview');
               // All processed, write preview
               writePreview();
             }
           })
           .withFailureHandler(function(error) {
+            var callDuration = Date.now() - callStartTime;
+            console.error('[CLIENT] pfProcessDataBatch FAILED after', callDuration, 'ms');
+            console.error('[CLIENT] Error details:', error);
+            console.error('[CLIENT] Error message:', error.message);
+            console.error('[CLIENT] Error stack:', error.stack);
+            
             if (timeoutId) {
               clearTimeout(timeoutId);
               timeoutId = null;
             }
             hideProgress();
-            console.error('Batch processing error:', error);
             var errorMsg = 'Ошибка при обработке данных (строка ' + (processed + 1) + '): ' + 
                           (error.message || error.toString());
             if (error.stack) {
-              errorMsg += '\nДетали: ' + error.stack.substring(0, 200);
+              errorMsg += '\nДетали: ' + error.stack.substring(0, 500);
             }
             showError(errorMsg);
             document.getElementById('previewBtn').disabled = false;
           })
           .pfProcessDataBatch(JSON.stringify(batchData), importerType, batchOptions, batchSize, processed);
+        
+        console.log('[CLIENT] google.script.run.pfProcessDataBatch call initiated');
       }
       
       function writePreview() {
