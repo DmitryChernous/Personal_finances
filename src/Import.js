@@ -901,7 +901,8 @@ function pfProcessDataBatch(rawDataJson, importerType, options, batchSize, start
       throw new Error('Invalid importerType: must be "sberbank", "csv", or "pdf", got: ' + String(importerType));
     }
     
-    batchSize = batchSize || PF_IMPORT_BATCH_SIZE;
+    // Use smaller batches for PDF to avoid timeout (PDF parsing is more complex)
+    batchSize = batchSize || (importerType === 'pdf' ? 50 : PF_IMPORT_BATCH_SIZE);
     if (typeof batchSize !== 'number' || isNaN(batchSize) || batchSize < 1 || batchSize > 1000) {
       pfLogError_('Invalid batchSize: ' + batchSize, 'pfProcessDataBatch', PF_LOG_LEVEL.ERROR);
       throw new Error('batchSize must be a number between 1 and 1000, got: ' + String(batchSize));
