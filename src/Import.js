@@ -1038,7 +1038,9 @@ function pfProcessDataBatch(rawDataJson, importerType, options, batchSize, start
         }
         
         // Apply auto-categorization if category is not set
-        if (!transaction.category || String(transaction.category).trim() === '') {
+        // NOTE: Disabled for PDF imports due to performance issues (pfGetAllCategoryRules_ is too slow)
+        // Users can apply categorization manually after import or we can optimize the function later
+        if (importerType !== 'pdf' && (!transaction.category || String(transaction.category).trim() === '')) {
           var categoryStartTime = new Date().getTime();
           transaction = pfApplyCategoryRules_(transaction, ss);
           var categoryTime = new Date().getTime() - categoryStartTime;
