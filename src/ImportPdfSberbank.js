@@ -53,32 +53,46 @@ var PF_PDF_SBERBANK_PARSER = {
     var transactions = [];
     var lines = text.split('\n');
     
-    // Find transaction sections (similar to CSV parser)
-    // Look for header "ДАТА ОПЕРАЦИИ (МСК)" - transactions start 2 lines after
-    var transactionStartIndex = -1;
+    // Find all transaction sections (similar to CSV parser - handle multiple pages)
+    // Look for all headers "ДАТА ОПЕРАЦИИ (МСК)" - transactions start 2 lines after each header
+    var transactionSections = [];
     for (var i = 0; i < lines.length; i++) {
       var line = lines[i].trim();
       if (line.indexOf('ДАТА ОПЕРАЦИИ (МСК)') !== -1 || 
           line.indexOf('ДАТА ОПЕРАЦИИ') !== -1) {
         // Transactions start 2 lines after header (skip "Дата обработки" and empty line)
-        transactionStartIndex = i + 2;
-        break;
+        // But check if next lines are headers - if so, skip more
+        var nextLineIdx = i + 1;
+        var skipLines = 2;
+        while (nextLineIdx < lines.length && nextLineIdx < i + 5) {
+          var nextLine = lines[nextLineIdx].trim();
+          if (nextLine.indexOf('Дата обработки') !== -1 ||
+              nextLine.indexOf('КАТЕГОРИЯ') !== -1 ||
+              nextLine.indexOf('СУММА') !== -1 ||
+              nextLine.length === 0) {
+            skipLines++;
+            nextLineIdx++;
+          } else {
+            break;
+          }
+        }
+        transactionSections.push(i + skipLines);
       }
     }
     
-    // If header not found, try to find first transaction by pattern
-    if (transactionStartIndex === -1) {
+    // If no sections found, try to find first transaction by pattern
+    if (transactionSections.length === 0) {
       for (var j = 0; j < lines.length; j++) {
         var testLine = lines[j].trim();
         // Look for pattern: date + time + code + category + amount
         if (testLine.match(/\d{2}\.\d{2}\.\d{4}\s+\d{2}:\d{2}\s+\d{6}/)) {
-          transactionStartIndex = j;
+          transactionSections.push(j);
           break;
         }
       }
     }
     
-    if (transactionStartIndex === -1) {
+    if (transactionSections.length === 0) {
       throw new Error('Не найдено начало транзакций в PDF файле');
     }
     
@@ -88,39 +102,46 @@ var PF_PDF_SBERBANK_PARSER = {
     var datePattern = /(\d{2}\.\d{2}\.\d{4})/;
     var amountPattern = /([\d\s]+,\d{2})/;
     
-    var currentTransaction = null;
-    
-    for (var i = transactionStartIndex; i < lines.length; i++) {
-      var line = lines[i].trim();
+    // Process all transaction sections (handle multiple pages)
+    for (var sectionIdx = 0; sectionIdx < transactionSections.length; sectionIdx++) {
+      var startRow = transactionSections[sectionIdx];
+      var endRow = sectionIdx < transactionSections.length - 1 
+        ? transactionSections[sectionIdx + 1] - 2 // Before next section header
+        : lines.length;
       
-      // Stop at footer markers
-      if (line.indexOf('Для проверки подлинности') !== -1 ||
-          line.indexOf('Действителен') !== -1) {
-        if (currentTransaction) {
-          transactions.push(currentTransaction);
-          currentTransaction = null;
-        }
-        break;
-      }
+      var currentTransaction = null;
       
-      // Skip empty lines, page numbers, and section headers
-      if (line.length === 0 ||
-          (line.indexOf('Страница') !== -1 && line.indexOf('из') !== -1) ||
-          line.indexOf('Продолжение на следующей странице') !== -1 ||
-          line.indexOf('--') !== -1 ||
-          line.indexOf('ДАТА ОПЕРАЦИИ') !== -1 ||
-          line.indexOf('Дата обработки') !== -1 ||
-          line.indexOf('КАТЕГОРИЯ') !== -1 ||
-          line.indexOf('СУММА В ВАЛЮТЕ') !== -1 ||
-          line.indexOf('ОСТАТОК СРЕДСТВ') !== -1 ||
-          line.indexOf('Выписка по счёту') !== -1) {
-        // If we hit a new section header, save current transaction
-        if (currentTransaction && line.indexOf('ДАТА ОПЕРАЦИИ') !== -1) {
-          transactions.push(currentTransaction);
-          currentTransaction = null;
+      for (var i = startRow; i < endRow; i++) {
+        var line = lines[i].trim();
+        
+        // Stop at footer markers
+        if (line.indexOf('Для проверки подлинности') !== -1 ||
+            line.indexOf('Действителен') !== -1) {
+          if (currentTransaction) {
+            transactions.push(currentTransaction);
+            currentTransaction = null;
+          }
+          break;
         }
-        continue;
-      }
+        
+        // Skip empty lines, page numbers, and section headers
+        if (line.length === 0 ||
+            (line.indexOf('Страница') !== -1 && line.indexOf('из') !== -1) ||
+            line.indexOf('Продолжение на следующей странице') !== -1 ||
+            line.indexOf('--') !== -1 ||
+            line.indexOf('ДАТА ОПЕРАЦИИ') !== -1 ||
+            line.indexOf('Дата обработки') !== -1 ||
+            line.indexOf('КАТЕГОРИЯ') !== -1 ||
+            line.indexOf('СУММА В ВАЛЮТЕ') !== -1 ||
+            line.indexOf('ОСТАТОК СРЕДСТВ') !== -1 ||
+            (line.indexOf('Выписка по счёту') !== -1 && line.indexOf('Страница') !== -1)) {
+          // If we hit a new section header within this section, save current transaction
+          if (currentTransaction && line.indexOf('ДАТА ОПЕРАЦИИ') !== -1) {
+            transactions.push(currentTransaction);
+            currentTransaction = null;
+          }
+          continue;
+        }
       
       // Try to match full transaction line pattern
       // Format: "31.12.2025 16:40 966521 Перевод СБП 1 500,00 96 776,18"
@@ -232,11 +253,12 @@ var PF_PDF_SBERBANK_PARSER = {
           };
         }
       }
-    }
-    
-    // Don't forget last transaction
-    if (currentTransaction) {
-      transactions.push(currentTransaction);
+      
+      // Don't forget last transaction from this section
+      if (currentTransaction) {
+        transactions.push(currentTransaction);
+        currentTransaction = null;
+      }
     }
     
     if (transactions.length === 0) {
