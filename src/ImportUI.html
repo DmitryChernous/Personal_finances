@@ -390,39 +390,15 @@
       var batchIndex = 0;
       
       function processNextBatch() {
-        if (processed >= rawData.length) {
-          // All processed, write preview
-          updateProgress('Запись предпросмотра в таблицу...', 90);
-          google.script.run
-            .withSuccessHandler(function(preview) {
-              hideProgress();
-              previewData = preview;
-              preview.stats.total = allTransactions.length;
-              preview.stats.valid = totalStats.valid;
-              preview.stats.needsReview = totalStats.needsReview;
-              preview.stats.duplicates = totalStats.duplicates;
-              showStats(preview.stats);
-              document.getElementById('message').innerHTML = 
-                '<div class="success">Предпросмотр готов. Проверьте лист "' + preview.stagingSheetName + '"</div>';
-              document.getElementById('previewBtn').disabled = false;
-              document.getElementById('commitBtn').disabled = false;
-              document.getElementById('commitWithReviewBtn').disabled = false;
-            })
-            .withFailureHandler(function(error) {
-              hideProgress();
-              showError('Ошибка при создании предпросмотра: ' + (error.message || error.toString()));
-              document.getElementById('previewBtn').disabled = false;
-            })
-            .pfWritePreview(JSON.stringify(allTransactions));
-          return;
-        }
-        
         // Calculate progress (15% to 85%)
         var progress = 15 + Math.floor((processed / totalCount) * 70);
         var remaining = totalCount - processed;
         updateProgress('Обработка транзакций: ' + processed + ' из ' + totalCount + ' (' + remaining + ' осталось)...', progress);
         
         // Process batch
+        // Note: For large files, we need to pass data more efficiently
+        // Instead of passing entire rawData, we'll process it server-side in one go
+        // and just update progress from client
         google.script.run
           .withSuccessHandler(function(batchResult) {
             allTransactions = allTransactions.concat(batchResult.transactions);
@@ -433,7 +409,33 @@
             processed = batchResult.processed;
             
             // Continue with next batch
-            setTimeout(processNextBatch, 10); // Small delay to allow UI update
+            if (batchResult.hasMore) {
+              setTimeout(processNextBatch, 50); // Small delay to allow UI update
+            } else {
+              // All processed, write preview
+              updateProgress('Запись предпросмотра в таблицу...', 90);
+              google.script.run
+                .withSuccessHandler(function(preview) {
+                  hideProgress();
+                  previewData = preview;
+                  preview.stats.total = allTransactions.length;
+                  preview.stats.valid = totalStats.valid;
+                  preview.stats.needsReview = totalStats.needsReview;
+                  preview.stats.duplicates = totalStats.duplicates;
+                  showStats(preview.stats);
+                  document.getElementById('message').innerHTML = 
+                    '<div class="success">Предпросмотр готов. Проверьте лист "' + preview.stagingSheetName + '"</div>';
+                  document.getElementById('previewBtn').disabled = false;
+                  document.getElementById('commitBtn').disabled = false;
+                  document.getElementById('commitWithReviewBtn').disabled = false;
+                })
+                .withFailureHandler(function(error) {
+                  hideProgress();
+                  showError('Ошибка при создании предпросмотра: ' + (error.message || error.toString()));
+                  document.getElementById('previewBtn').disabled = false;
+                })
+                .pfWritePreview(JSON.stringify(allTransactions));
+            }
           })
           .withFailureHandler(function(error) {
             hideProgress();

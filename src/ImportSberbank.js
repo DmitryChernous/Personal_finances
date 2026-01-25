@@ -47,31 +47,48 @@ var PF_SBERBANK_IMPORTER = {
     var transactions = [];
     var currentTransaction = null;
     
-    // Find start of transactions (after "ДАТА ОПЕРАЦИИ (МСК)" header)
-    var startRow = -1;
+    // Find all transaction sections (there can be multiple pages)
+    var transactionSections = [];
     for (var i = 0; i < lines.length; i++) {
       if (lines[i].indexOf('ДАТА ОПЕРАЦИИ (МСК)') !== -1) {
-        // Transactions start 4 rows after header (rows 14-17 are headers)
-        startRow = i + 4;
-        break;
+        // Transactions start 4 rows after header
+        transactionSections.push(i + 4);
       }
     }
     
-    if (startRow === -1) {
+    if (transactionSections.length === 0) {
       throw new Error('Не найдено начало транзакций в файле Сбербанка');
     }
     
-    // Parse transactions
-    for (var i = startRow; i < lines.length; i++) {
-      var line = lines[i].trim();
-      if (line === '' || line.indexOf('Для проверки подлинности') !== -1) {
-        // End of transactions
-        if (currentTransaction) {
-          transactions.push(currentTransaction);
-          currentTransaction = null;
+    // Parse transactions from all sections
+    var allProcessed = false;
+    for (var sectionIdx = 0; sectionIdx < transactionSections.length; sectionIdx++) {
+      var startRow = transactionSections[sectionIdx];
+      var endRow = sectionIdx < transactionSections.length - 1 
+        ? transactionSections[sectionIdx + 1] - 10 // Before next section header
+        : lines.length;
+      
+      for (var i = startRow; i < endRow; i++) {
+        var line = lines[i].trim();
+        
+        // Skip empty lines and page breaks
+        if (line === '' || 
+            line.indexOf('Продолжение на следующей странице') !== -1 ||
+            line.indexOf('Страница') !== -1 && line.indexOf('из') !== -1) {
+          continue;
         }
-        break;
-      }
+        
+        // Stop at footer
+        if (line.indexOf('Для проверки подлинности') !== -1 ||
+            line.indexOf('Действителен') !== -1 ||
+            (line.indexOf('Выписка по счёту') !== -1 && line.indexOf('Страница') !== -1)) {
+          // End of this section, but continue to next section
+          if (currentTransaction) {
+            transactions.push(currentTransaction);
+            currentTransaction = null;
+          }
+          break;
+        }
       
       // Parse CSV line (handle quoted fields)
       var fields = this._parseCSVLine_(line, ',');
@@ -109,11 +126,13 @@ var PF_SBERBANK_IMPORTER = {
           currentTransaction.description.push(fields[3].trim());
         }
       }
-    }
-    
-    // Don't forget last transaction
-    if (currentTransaction) {
-      transactions.push(currentTransaction);
+      }
+      
+      // Don't forget last transaction from this section
+      if (currentTransaction) {
+        transactions.push(currentTransaction);
+        currentTransaction = null;
+      }
     }
     
     return transactions;
