@@ -616,6 +616,16 @@ function pfFindDuplicateTransaction(dedupeKey) {
 }
 
 /**
+ * Public function for HTML Service: Commit import.
+ * @param {boolean} includeNeedsReview - Include transactions marked for review
+ * @returns {Object} Commit result
+ */
+function pfCommitImport(includeNeedsReview) {
+  Logger.log('[SERVER] pfCommitImport (PUBLIC) called, includeNeedsReview: ' + includeNeedsReview);
+  return pfCommitImport_(includeNeedsReview);
+}
+
+/**
  * Commit import: move valid transactions from staging to Transactions sheet.
  * @param {boolean} includeNeedsReview - Include transactions marked for review
  * @returns {Object} Commit result
@@ -655,7 +665,13 @@ function pfCommitImport_(includeNeedsReview) {
       needsReview: 0
     };
     
+    Logger.log('[SERVER] Processing ' + data.length + ' rows from staging sheet');
+    
     for (var i = 0; i < data.length; i++) {
+      if (i % 100 === 0 || i < 5) {
+        Logger.log('[SERVER] Processing row ' + (i + 2) + ' of ' + (data.length + 1));
+      }
+      
       var row = data[i];
       
       // Check status - normalize to string
@@ -669,19 +685,25 @@ function pfCommitImport_(includeNeedsReview) {
         Logger.log('[SERVER] WARNING: Could not read error cell for row ' + (i + 2) + ': ' + e.toString());
       }
       
-      if (i < 3) {
-        Logger.log('[SERVER] Row ' + (i + 2) + ': status=' + statusValue + ', hasErrors=' + hasErrors + ', date=' + (row[dateColIdx - 1] || ''));
+      if (i < 5) {
+        Logger.log('[SERVER] Row ' + (i + 2) + ': status=' + statusValue + ', hasErrors=' + hasErrors + ', date=' + (row[dateColIdx - 1] || '') + ', dateType=' + typeof row[dateColIdx - 1]);
       }
       
       // Skip duplicates
       if (statusValue === 'duplicate') {
         stats.skipped++;
+        if (i < 5) {
+          Logger.log('[SERVER] Skipping duplicate row ' + (i + 2));
+        }
         continue;
       }
       
       // Skip needs_review if not including
       if (statusValue === 'needs_review' && !includeNeedsReview) {
         stats.needsReview++;
+        if (i < 5) {
+          Logger.log('[SERVER] Skipping needs_review row ' + (i + 2) + ' (not including)');
+        }
         continue;
       }
       
@@ -696,6 +718,9 @@ function pfCommitImport_(includeNeedsReview) {
             var dateObj = new Date(value);
             if (!isNaN(dateObj.getTime())) {
               processedRow.push(dateObj);
+              if (i < 3) {
+                Logger.log('[SERVER] Converted date string to Date: ' + value + ' -> ' + dateObj.toISOString());
+              }
             } else {
               Logger.log('[SERVER] WARNING: Invalid date string in row ' + (i + 2) + ': ' + value);
               processedRow.push(value); // Keep as string if can't parse
@@ -718,25 +743,41 @@ function pfCommitImport_(includeNeedsReview) {
     
     if (rowsToAdd.length > 0) {
       var lastRow = txSheet.getLastRow();
+      Logger.log('[SERVER] Current Transactions sheet lastRow: ' + lastRow);
       Logger.log('[SERVER] Writing ' + rowsToAdd.length + ' rows to Transactions sheet starting at row ' + (lastRow + 1));
+      Logger.log('[SERVER] Row width: ' + rowsToAdd[0].length + ' columns');
+      
+      if (rowsToAdd[0].length !== numDataCols) {
+        Logger.log('[SERVER] WARNING: Row width mismatch! Expected ' + numDataCols + ', got ' + rowsToAdd[0].length);
+      }
       
       try {
-        txSheet.getRange(lastRow + 1, 1, rowsToAdd.length, rowsToAdd[0].length).setValues(rowsToAdd);
-        Logger.log('[SERVER] Successfully wrote rows to Transactions sheet');
+        var targetRange = txSheet.getRange(lastRow + 1, 1, rowsToAdd.length, rowsToAdd[0].length);
+        Logger.log('[SERVER] Target range: ' + targetRange.getA1Notation());
+        targetRange.setValues(rowsToAdd);
+        Logger.log('[SERVER] Successfully wrote ' + rowsToAdd.length + ' rows to Transactions sheet');
         
         // Normalize and validate added rows
+        Logger.log('[SERVER] Starting normalization and validation of ' + rowsToAdd.length + ' rows...');
         for (var i = 0; i < rowsToAdd.length; i++) {
           try {
+            if (i % 50 === 0 || i < 3) {
+              Logger.log('[SERVER] Normalizing/validating row ' + (lastRow + 1 + i));
+            }
             pfNormalizeTransactionRow_(txSheet, lastRow + 1 + i);
             var errors = pfValidateTransactionRow_(txSheet, lastRow + 1 + i);
             pfHighlightErrors_(txSheet, lastRow + 1 + i, errors);
           } catch (e) {
             Logger.log('[SERVER] WARNING: Error normalizing/validating row ' + (lastRow + 1 + i) + ': ' + e.toString());
+            Logger.log('[SERVER] Error stack: ' + (e.stack || 'No stack'));
           }
         }
+        Logger.log('[SERVER] Completed normalization and validation');
       } catch (e) {
         Logger.log('[SERVER] ERROR writing to Transactions sheet: ' + e.toString());
         Logger.log('[SERVER] Error stack: ' + (e.stack || 'No stack'));
+        Logger.log('[SERVER] Rows to add length: ' + rowsToAdd.length);
+        Logger.log('[SERVER] First row sample: ' + JSON.stringify(rowsToAdd[0] ? rowsToAdd[0].slice(0, 5) : 'null'));
         throw new Error('Ошибка при записи транзакций: ' + e.toString());
       }
     } else {

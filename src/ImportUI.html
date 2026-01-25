@@ -303,39 +303,87 @@
     }
     
     function commitImport(includeNeedsReview) {
+      console.log('[CLIENT] commitImport called, includeNeedsReview: ' + includeNeedsReview);
+      
       if (!previewData) {
+        console.log('[CLIENT] ERROR: No preview data');
         showError('Сначала выполните предпросмотр');
         return;
       }
       
+      console.log('[CLIENT] Preview data exists, starting import...');
+      
       document.getElementById('commitBtn').disabled = true;
       document.getElementById('commitWithReviewBtn').disabled = true;
-      document.getElementById('message').innerHTML = '<div>Импорт...</div>';
+      
+      // Show progress bar
+      showProgress('Начало импорта...', 0);
+      
+      var startTime = new Date().getTime();
+      var timeoutId = setTimeout(function() {
+        console.log('[CLIENT] WARNING: Import timeout after 5 minutes');
+        hideProgress();
+        showError('Импорт занял слишком много времени. Проверьте логи Apps Script.');
+        document.getElementById('commitBtn').disabled = false;
+        document.getElementById('commitWithReviewBtn').disabled = false;
+      }, 5 * 60 * 1000); // 5 minutes timeout
+      
+      console.log('[CLIENT] Calling pfCommitImport at ' + new Date().toISOString());
+      
+      updateProgress('Чтение данных из листа предпросмотра...', 10);
       
       google.script.run
         .withSuccessHandler(function(result) {
+          clearTimeout(timeoutId);
+          var elapsed = new Date().getTime() - startTime;
+          console.log('[CLIENT] pfCommitImport SUCCESS after ' + elapsed + ' ms');
+          console.log('[CLIENT] Result: ' + JSON.stringify(result));
+          
+          if (!result) {
+            console.log('[CLIENT] ERROR: Result is null');
+            hideProgress();
+            showError('Ошибка: сервер вернул пустой результат');
+            document.getElementById('commitBtn').disabled = false;
+            document.getElementById('commitWithReviewBtn').disabled = false;
+            return;
+          }
+          
           if (result.success) {
-            document.getElementById('message').innerHTML = 
-              '<div class="success">' + result.message + '</div>';
-            // Reset
-            previewData = null;
-            document.getElementById('fileInput').value = '';
-            fileContent = null;
-            document.getElementById('stats').style.display = 'none';
-            document.getElementById('commitBtn').disabled = true;
-            document.getElementById('commitWithReviewBtn').disabled = true;
+            updateProgress('Импорт завершен успешно!', 100);
+            setTimeout(function() {
+              hideProgress();
+              document.getElementById('message').innerHTML = 
+                '<div class="success">' + result.message + '</div>';
+              // Reset
+              previewData = null;
+              document.getElementById('fileInput').value = '';
+              fileContent = null;
+              document.getElementById('stats').style.display = 'none';
+              document.getElementById('commitBtn').disabled = true;
+              document.getElementById('commitWithReviewBtn').disabled = true;
+            }, 1000);
           } else {
-            showError(result.message);
+            console.log('[CLIENT] ERROR: Import failed: ' + (result.message || 'Unknown error'));
+            hideProgress();
+            showError(result.message || 'Ошибка при импорте');
             document.getElementById('commitBtn').disabled = false;
             document.getElementById('commitWithReviewBtn').disabled = false;
           }
         })
         .withFailureHandler(function(error) {
-          showError('Ошибка при импорте: ' + error.message);
+          clearTimeout(timeoutId);
+          var elapsed = new Date().getTime() - startTime;
+          console.log('[CLIENT] pfCommitImport FAILURE after ' + elapsed + ' ms');
+          console.log('[CLIENT] Error: ' + JSON.stringify(error));
+          console.log('[CLIENT] Error message: ' + (error.message || error.toString()));
+          console.log('[CLIENT] Error stack: ' + (error.stack || 'No stack'));
+          
+          hideProgress();
+          showError('Ошибка при импорте: ' + (error.message || error.toString()) + '. Проверьте логи Apps Script.');
           document.getElementById('commitBtn').disabled = false;
           document.getElementById('commitWithReviewBtn').disabled = false;
         })
-        .pfCommitImport_(includeNeedsReview);
+        .pfCommitImport(includeNeedsReview);
     }
     
     function showStats(stats) {
