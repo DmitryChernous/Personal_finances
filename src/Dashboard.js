@@ -145,19 +145,19 @@ function pfInitializeDashboard_(ss) {
       var categoryTotals = {};
       
       for (var i = 0; i < data.length; i++) {
-        var row = data[i];
+        var rowData = data[i];
         
-        // Check if row has enough columns.
-        if (row.length <= categoryIdx || row.length <= amountIdx || 
-            row.length <= typeIdx || row.length <= statusIdx || row.length <= dateIdx) {
+        // Check if rowData has enough columns.
+        if (rowData.length <= categoryIdx || rowData.length <= amountIdx || 
+            rowData.length <= typeIdx || rowData.length <= statusIdx || rowData.length <= dateIdx) {
           continue;
         }
         
-        var date = row[dateIdx];
-        var type = row[typeIdx];
-        var status = row[statusIdx];
-        var category = row[categoryIdx];
-        var amount = row[amountIdx];
+        var date = rowData[dateIdx];
+        var type = rowData[typeIdx];
+        var status = rowData[statusIdx];
+        var category = rowData[categoryIdx];
+        var amount = rowData[amountIdx];
         
         // Filter: current month, expense, ok status, has category.
         if (date && date >= monthStart && date <= monthEnd && 
