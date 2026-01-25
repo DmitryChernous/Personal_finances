@@ -281,68 +281,14 @@ function pfEnsureImportRawSheet_(ss) {
 }
 
 /**
- * Process imported data: parse, normalize, validate, deduplicate.
- * @param {Array<Object>} rawData - Raw data from importer
- * @param {Object} importer - Importer object (e.g., PF_CSV_IMPORTER)
- * @param {Object} options - Import options
- * @returns {Object} {transactions: Array<TransactionDTO>, stats: Object}
+ * @deprecated This function is no longer used.
+ * Processing logic has been moved to pfProcessDataBatch() which handles batching and progress updates.
+ * Kept for reference only - can be removed in future cleanup.
  */
 function pfProcessImportData_(rawData, importer, options) {
-  options = options || {};
-  var transactions = [];
-  var stats = {
-    total: rawData.length,
-    valid: 0,
-    needsReview: 0,
-    duplicates: 0,
-    errors: 0
-  };
-  
-  // Get existing transaction keys for deduplication
-  var existingKeys = pfGetExistingTransactionKeys_();
-  
-  for (var i = 0; i < rawData.length; i++) {
-    try {
-      // Normalize
-      var transaction = importer.normalize(rawData[i], options);
-      
-      // Check for duplicates
-      var dedupeKey = importer.dedupeKey(transaction);
-      if (existingKeys[dedupeKey]) {
-        transaction.status = 'duplicate';
-        stats.duplicates++;
-      } else {
-        existingKeys[dedupeKey] = true;
-      }
-      
-      // Count by status
-      if (transaction.errors && transaction.errors.length > 0) {
-        transaction.status = 'needs_review';
-        stats.needsReview++;
-        stats.errors++;
-      } else if (transaction.status === PF_TRANSACTION_STATUS.OK) {
-        stats.valid++;
-      }
-      
-      transactions.push(transaction);
-    } catch (e) {
-      stats.errors++;
-      // Create error transaction
-      transactions.push({
-        date: new Date(),
-        type: PF_TRANSACTION_TYPE.EXPENSE,
-        account: '',
-        amount: 0,
-        currency: PF_DEFAULT_CURRENCY,
-        source: options.source || PF_IMPORT_SOURCE.ERROR,
-        status: PF_TRANSACTION_STATUS.NEEDS_REVIEW,
-        errors: [{ field: 'General', message: 'Ошибка парсинга: ' + e.toString() }],
-        rawData: JSON.stringify(rawData[i])
-      });
-    }
-  }
-  
-  return { transactions: transactions, stats: stats };
+  // This function is deprecated and not used anywhere in the codebase.
+  // All processing is now done via pfProcessDataBatch().
+  throw new Error('pfProcessImportData_ is deprecated. Use pfProcessDataBatch() instead.');
 }
 
 /**
@@ -1053,68 +999,19 @@ function pfWritePreview(transactionsJson) {
 }
 
 /**
- * Process file import (called from UI) - simplified version that calls steps.
- * @param {string} fileContent - File content as string
- * @param {Object} options - Import options
- * @returns {Object} Preview result
+ * @deprecated This function is no longer used.
+ * Import workflow is now handled client-side in ImportUI.html which calls:
+ * - pfDetectFileFormat()
+ * - pfParseFileContent()
+ * - pfProcessDataBatch() (in batches with progress)
+ * - pfWritePreview()
+ * 
+ * This function is kept for reference only - can be removed in future cleanup.
  */
 function pfProcessFileImport_(fileContent, options) {
-  options = options || {};
-  
-  try {
-    // Step 1: Detect format
-    var formatInfo = pfDetectFileFormat(fileContent);
-    if (!formatInfo.detected) {
-      throw new Error('Формат файла не поддерживается. Используйте CSV файл или выписку Сбербанка.');
-    }
-    
-    // Step 2: Parse
-    var parseResult = pfParseFileContent(fileContent, formatInfo.importerType, options);
-    if (parseResult.count === 0) {
-      throw new Error('Файл пуст или не содержит данных для импорта');
-    }
-    
-    // Step 3: Process all data (for now, process in one go, but can be batched)
-    var allTransactions = [];
-    var totalStats = {
-      valid: 0,
-      needsReview: 0,
-      duplicates: 0,
-      errors: 0
-    };
-    
-    var batchSize = PF_IMPORT_BATCH_SIZE; // Process in batches
-    var processed = 0;
-    
-        while (processed < parseResult.rawData.length) {
-      var batchResult = pfProcessDataBatch(JSON.stringify(parseResult.rawData), formatInfo.importerType, options, batchSize, processed);
-      allTransactions = allTransactions.concat(batchResult.transactions);
-      totalStats.valid += batchResult.stats.valid;
-      totalStats.needsReview += batchResult.stats.needsReview;
-      totalStats.duplicates += batchResult.stats.duplicates;
-      totalStats.errors += batchResult.stats.errors;
-      processed = batchResult.processed;
-    }
-    
-    if (allTransactions.length === 0) {
-      throw new Error('Не удалось обработать транзакции из файла');
-    }
-    
-    // Step 4: Preview
-    var preview = pfWritePreview(JSON.stringify(allTransactions));
-    preview.stats.total = allTransactions.length;
-    preview.stats.valid = totalStats.valid;
-    preview.stats.needsReview = totalStats.needsReview;
-    preview.stats.duplicates = totalStats.duplicates;
-    
-    return preview;
-  } catch (error) {
-    var errorMessage = error.message || error.toString();
-    if (errorMessage.indexOf('timeout') !== -1 || errorMessage.indexOf('exceeded') !== -1) {
-      throw new Error('Файл слишком большой или обработка заняла слишком много времени. Попробуйте разбить файл на части или уменьшить количество транзакций.');
-    }
-    throw error;
-  }
+  // This function is deprecated and not used anywhere in the codebase.
+  // Import workflow is now handled client-side with granular progress updates.
+  throw new Error('pfProcessFileImport_ is deprecated. Import workflow is now handled client-side via ImportUI.html.');
 }
 
 /**
