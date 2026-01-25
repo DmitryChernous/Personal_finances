@@ -117,7 +117,7 @@ function testErrorHandler() {
     
     // Test error response creation
     var errorResp = pfCreateErrorResponse_('Test error');
-    if (!errorResp.success || errorResp.success !== false) errors.push('pfCreateErrorResponse_ success field incorrect');
+    if (errorResp.success !== false) errors.push('pfCreateErrorResponse_ success field incorrect: expected false, got ' + errorResp.success);
     if (errorResp.message !== 'Test error') errors.push('pfCreateErrorResponse_ message incorrect');
     
     // Test success response creation
@@ -129,8 +129,11 @@ function testErrorHandler() {
     // Test error handling (should not throw)
     try {
       var handled = pfHandleError_(new Error('Test'), 'testContext', 'User message');
-      if (!handled.success || handled.message !== 'User message') {
-        errors.push('pfHandleError_ incorrect response');
+      if (handled.success !== false) {
+        errors.push('pfHandleError_ success field incorrect: expected false, got ' + handled.success);
+      }
+      if (handled.message !== 'User message') {
+        errors.push('pfHandleError_ message incorrect: expected "User message", got "' + handled.message + '"');
       }
     } catch (e) {
       errors.push('pfHandleError_ threw exception: ' + e.toString());

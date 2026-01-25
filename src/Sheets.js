@@ -123,3 +123,49 @@ function pfUpsertNamedRange_(ss, name, range) {
   ss.setNamedRange(name, range);
 }
 
+/**
+ * Safely clear sheet rows: content, formatting, and notes.
+ * Attempts to delete rows, falls back to clearing content if deletion fails.
+ * 
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet - Sheet to clear
+ * @param {number} startRow - First row to clear (1-based, typically 2 to skip header)
+ * @param {number} numRows - Number of rows to clear
+ * @returns {boolean} True if successful, false otherwise
+ */
+function pfClearSheetRows_(sheet, startRow, numRows) {
+  if (!sheet || startRow < 1 || numRows < 1) {
+    Logger.log('[SHEETS] Invalid parameters for pfClearSheetRows_: sheet=' + sheet + ', startRow=' + startRow + ', numRows=' + numRows);
+    return false;
+  }
+  
+  var lastCol = sheet.getLastColumn();
+  if (lastCol < 1) {
+    Logger.log('[SHEETS] Sheet has no columns, nothing to clear');
+    return true; // Nothing to clear
+  }
+  
+  var clearRange = sheet.getRange(startRow, 1, numRows, lastCol);
+  
+  try {
+    // Clear everything: content, formatting, and notes
+    clearRange.clearContent();
+    clearRange.clearFormat();
+    clearRange.clearNote();
+    
+    // Try to delete rows
+    try {
+      sheet.deleteRows(startRow, numRows);
+      Logger.log('[SHEETS] Successfully cleared and deleted ' + numRows + ' rows starting at ' + startRow);
+      return true;
+    } catch (e) {
+      Logger.log('[SHEETS] WARNING: Could not delete rows, but content cleared: ' + e.toString());
+      // Content is already cleared, so this is acceptable
+      return true;
+    }
+  } catch (e) {
+    Logger.log('[SHEETS] ERROR: Could not clear sheet rows: ' + e.toString());
+    Logger.log('[SHEETS] Error stack: ' + (e.stack || 'No stack'));
+    return false;
+  }
+}
+
