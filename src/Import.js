@@ -862,9 +862,9 @@ function pfProcessDataBatch(rawDataJson, importerType, options, batchSize, start
       throw new Error('rawDataJson must be a non-empty string');
     }
     
-    if (!importerType || typeof importerType !== 'string' || !['sberbank', 'csv'].includes(importerType)) {
+    if (!importerType || typeof importerType !== 'string' || !['sberbank', 'csv', 'pdf'].includes(importerType)) {
       pfLogError_('Invalid importerType: ' + importerType, 'pfProcessDataBatch', PF_LOG_LEVEL.ERROR);
-      throw new Error('Invalid importerType: must be "sberbank" or "csv", got: ' + String(importerType));
+      throw new Error('Invalid importerType: must be "sberbank", "csv", or "pdf", got: ' + String(importerType));
     }
     
     batchSize = batchSize || PF_IMPORT_BATCH_SIZE;
