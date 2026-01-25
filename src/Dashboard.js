@@ -62,11 +62,11 @@ function pfInitializeDashboard_(ss) {
     // Expenses.
     var expenseFormula = '=SUMIFS(\'' + txSheetName + '\'!' + amountCol + '2:' + amountCol + ';\'' + txSheetName + '\'!' + typeCol + '2:' + typeCol + ';"expense";\'' + txSheetName + '\'!' + statusCol + '2:' + statusCol + ';"ok";\'' + txSheetName + '\'!' + dateCol + '2:' + dateCol + ';">="&' + monthStart + ';\'' + txSheetName + '\'!' + dateCol + '2:' + dateCol + ';"<="&' + monthEnd + ')';
     
-    // Net.
-    var netFormula = '=' + dashboardSheet.getRange(row + 1, 1).getA1Notation() + '-' + dashboardSheet.getRange(row + 1, 2).getA1Notation();
+    // Net (Income - Expenses). Reference data row (row + 2), not header row (row + 1).
+    var netFormula = '=' + dashboardSheet.getRange(row + 2, 1).getA1Notation() + '-' + dashboardSheet.getRange(row + 2, 2).getA1Notation();
     
-    // Average daily expense (expenses / days in month).
-    var avgDailyFormula = '=' + dashboardSheet.getRange(row + 1, 2).getA1Notation() + '/DAY(EOMONTH(TODAY();0))';
+    // Average daily expense (expenses / days in month). Reference data row (row + 2), not header row (row + 1).
+    var avgDailyFormula = '=' + dashboardSheet.getRange(row + 2, 2).getA1Notation() + '/DAY(EOMONTH(TODAY();0))';
 
     dashboardSheet.getRange(row + 2, 1).setFormula(incomeFormula);
     dashboardSheet.getRange(row + 2, 2).setFormula(expenseFormula);
