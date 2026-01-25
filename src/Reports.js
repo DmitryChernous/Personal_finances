@@ -281,17 +281,42 @@ function pfInitializeReports_(ss) {
       // Get accounts with initial balances.
       var accountsDataRange = accountsSheet.getRange(2, 1, accountsSheet.getLastRow() - 1, PF_ACCOUNTS_SCHEMA.columns.length);
       var accountsData = accountsDataRange.getValues();
-      var accountNameIdx = pfColumnIndex_(PF_ACCOUNTS_SCHEMA, 'Account') - 1;
-      var initialBalanceIdx = pfColumnIndex_(PF_ACCOUNTS_SCHEMA, 'InitialBalance') - 1;
+      
+      // Get column indices (1-based), then convert to 0-based.
+      var accountNameColIdx = pfColumnIndex_(PF_ACCOUNTS_SCHEMA, 'Account');
+      var initialBalanceColIdx = pfColumnIndex_(PF_ACCOUNTS_SCHEMA, 'InitialBalance');
       var accountToCol = pfColumnLetter_(PF_TRANSACTIONS_SCHEMA, 'AccountTo');
+      
+      // Check if column indices are valid.
+      if (!accountNameColIdx || !initialBalanceColIdx) {
+        // If schema columns not found, skip account balances calculation.
+        return;
+      }
+      
+      var accountNameIdx = accountNameColIdx - 1; // Convert to 0-based
+      var initialBalanceIdx = initialBalanceColIdx - 1; // Convert to 0-based
       
       // Build a map of account names to initial balances.
       var initialBalances = {};
       for (var i = 0; i < accountsData.length; i++) {
+        // Check if row has enough columns.
+        if (accountsData[i].length <= accountNameIdx || accountsData[i].length <= initialBalanceIdx) {
+          continue;
+        }
+        
         var accountName = accountsData[i][accountNameIdx];
         if (!accountName || String(accountName).trim() === '') continue;
+        
         var initialBalance = accountsData[i][initialBalanceIdx];
-        initialBalances[String(accountName).trim()] = Number(initialBalance) || 0;
+        // Safely convert to number.
+        var balanceNum = 0;
+        if (initialBalance !== null && initialBalance !== undefined && initialBalance !== '') {
+          var parsed = Number(initialBalance);
+          if (!isNaN(parsed)) {
+            balanceNum = parsed;
+          }
+        }
+        initialBalances[String(accountName).trim()] = balanceNum;
       }
       
       // For each account, calculate balance using formula:
@@ -305,7 +330,10 @@ function pfInitializeReports_(ss) {
         reportsSheet.getRange(balanceRow, 1).setValue(accountName);
         
         // Get initial balance value (or 0 if not set).
-        var initialBalanceValue = initialBalances[accountName] || 0;
+        var initialBalanceValue = initialBalances[accountName];
+        if (isNaN(initialBalanceValue) || initialBalanceValue === null || initialBalanceValue === undefined) {
+          initialBalanceValue = 0;
+        }
         
         // Income: SUMIFS for income transactions.
         var incomePart = 'SUMIFS(\'' + txSheetName + '\'!' + amountCol + '2:' + amountCol + ';\'' + txSheetName + '\'!' + accountCol + '2:' + accountCol + ';"' + accountName + '";\'' + txSheetName + '\'!' + typeCol + '2:' + typeCol + ';"income";\'' + txSheetName + '\'!' + statusCol + '2:' + statusCol + ';"ok")';
