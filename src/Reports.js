@@ -229,85 +229,80 @@ function pfInitializeReports_(ss) {
 
   // Monthly cashflow for last 12 months - use script-based calculation.
   var txSheet = pfFindSheetByKey_(ss, PF_SHEET_KEYS.TRANSACTIONS);
-  // Cache lastRow to avoid multiple calls
-  var lastRow = txSheet ? txSheet.getLastRow() : 0;
-  if (lastRow <= 1) {
-    return; // No data, skip calculation
-  }
-  
-  var today = new Date();
-  var monthlyData = [];
-  
-  // Get all data once (cache for all months)
-  var data = txSheet.getRange(2, 1, lastRow - 1, PF_TRANSACTIONS_SCHEMA.columns.length).getValues();
-  
-  // Calculate for last 12 months (including current month).
-  for (var monthOffset = 11; monthOffset >= 0; monthOffset--) {
-    var targetDate = new Date(today.getFullYear(), today.getMonth() - monthOffset, 1);
-    var monthStart = new Date(targetDate.getFullYear(), targetDate.getMonth(), 1);
-    var monthEnd = new Date(targetDate.getFullYear(), targetDate.getMonth() + 1, 0);
-    
-    var monthLabel = '';
-    if (lang === 'en') {
-      var monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-      monthLabel = monthNames[targetDate.getMonth()] + ' ' + targetDate.getFullYear();
-    } else {
-      var monthNamesRu = ['Янв', 'Фев', 'Мар', 'Апр', 'Май', 'Июн', 'Июл', 'Авг', 'Сен', 'Окт', 'Ноя', 'Дек'];
-      monthLabel = monthNamesRu[targetDate.getMonth()] + ' ' + targetDate.getFullYear();
-    }
+  if (txSheet) {
+    // Cache lastRow to avoid multiple calls
+    var lastRow = txSheet.getLastRow();
+    if (lastRow > 1) {
+      var today = new Date();
+      var monthlyData = [];
       
-      // Get column indices and validate them.
+      // Get all data once (cache for all months)
+      var data = txSheet.getRange(2, 1, lastRow - 1, PF_TRANSACTIONS_SCHEMA.columns.length).getValues();
+      
+      // Get column indices and validate them (once, outside loop)
       var amountColIdx = pfColumnIndex_(PF_TRANSACTIONS_SCHEMA, 'Amount');
       var typeColIdx = pfColumnIndex_(PF_TRANSACTIONS_SCHEMA, 'Type');
       var statusColIdx = pfColumnIndex_(PF_TRANSACTIONS_SCHEMA, 'Status');
       var dateColIdx = pfColumnIndex_(PF_TRANSACTIONS_SCHEMA, 'Date');
       
-      // Check if all required indices are valid.
-      if (!amountColIdx || !typeColIdx || !statusColIdx || !dateColIdx) {
-        // Missing required columns, skip this month.
-        continue;
-      }
-      
-      var amountIdx = amountColIdx - 1;
-      var typeIdx = typeColIdx - 1;
-      var statusIdx = statusColIdx - 1;
-      var dateIdx = dateColIdx - 1;
-      
-      var income = 0;
-      var expense = 0;
-      
-      for (var i = 0; i < data.length; i++) {
-        var rowData = data[i];
+      if (amountColIdx && typeColIdx && statusColIdx && dateColIdx) {
+        var amountIdx = amountColIdx - 1;
+        var typeIdx = typeColIdx - 1;
+        var statusIdx = statusColIdx - 1;
+        var dateIdx = dateColIdx - 1;
         
-        // Check if row has enough columns.
-        if (rowData.length <= amountIdx || rowData.length <= typeIdx || 
-            rowData.length <= statusIdx || rowData.length <= dateIdx) {
-          continue;
-        }
-        
-        var date = rowData[dateIdx];
-        var type = rowData[typeIdx];
-        var status = rowData[statusIdx];
-        var amount = rowData[amountIdx];
-        
-        // Filter: current month, ok status, exclude transfers.
-        if (date && date >= monthStart && date <= monthEnd && status === PF_TRANSACTION_STATUS.OK && type !== PF_TRANSACTION_TYPE.TRANSFER) {
-          if (type === 'income') {
-            income += Number(amount) || 0;
-          } else if (type === 'expense') {
-            expense += Number(amount) || 0;
+        // Calculate for last 12 months (including current month).
+        for (var monthOffset = 11; monthOffset >= 0; monthOffset--) {
+          var targetDate = new Date(today.getFullYear(), today.getMonth() - monthOffset, 1);
+          var monthStart = new Date(targetDate.getFullYear(), targetDate.getMonth(), 1);
+          var monthEnd = new Date(targetDate.getFullYear(), targetDate.getMonth() + 1, 0);
+          
+          var monthLabel = '';
+          if (lang === 'en') {
+            var monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+            monthLabel = monthNames[targetDate.getMonth()] + ' ' + targetDate.getFullYear();
+          } else {
+            var monthNamesRu = ['Янв', 'Фев', 'Мар', 'Апр', 'Май', 'Июн', 'Июл', 'Авг', 'Сен', 'Окт', 'Ноя', 'Дек'];
+            monthLabel = monthNamesRu[targetDate.getMonth()] + ' ' + targetDate.getFullYear();
           }
+          
+          var income = 0;
+          var expense = 0;
+          
+          for (var i = 0; i < data.length; i++) {
+            var rowData = data[i];
+            
+            // Check if row has enough columns.
+            if (rowData.length <= amountIdx || rowData.length <= typeIdx || 
+                rowData.length <= statusIdx || rowData.length <= dateIdx) {
+              continue;
+            }
+            
+            var date = rowData[dateIdx];
+            var type = rowData[typeIdx];
+            var status = rowData[statusIdx];
+            var amount = rowData[amountIdx];
+            
+            // Filter: current month, ok status, exclude transfers.
+            if (date && date >= monthStart && date <= monthEnd && status === PF_TRANSACTION_STATUS.OK && type !== PF_TRANSACTION_TYPE.TRANSFER) {
+              if (type === PF_TRANSACTION_TYPE.INCOME) {
+                income += Number(amount) || 0;
+              } else if (type === PF_TRANSACTION_TYPE.EXPENSE) {
+                expense += Number(amount) || 0;
+              }
+            }
+          }
+          
+          var net = income - expense;
+          monthlyData.push([monthLabel, income, expense, net]);
+        }
+        
+        // Write monthly data.
+        if (monthlyData.length > 0) {
+          reportsSheet.getRange(row + 2, 1, monthlyData.length, 4).setValues(monthlyData);
+          reportsSheet.getRange(row + 2, 2, monthlyData.length, 3).setNumberFormat('#,##0.00');
         }
       }
-      
-      var net = income - expense;
-      monthlyData.push([monthLabel, income, expense, net]);
-    }
-    
-    // Write monthly data.
-    if (monthlyData.length > 0) {
-      reportsSheet.getRange(row + 2, 1, monthlyData.length, 4).setValues(monthlyData);
-      reportsSheet.getRange(row + 2, 2, monthlyData.length, 3).setNumberFormat('#,##0.00');
     }
   }
 
