@@ -191,20 +191,44 @@
     };
     
     function loadAccounts() {
+      console.log('[CLIENT] Loading accounts...');
       google.script.run
         .withSuccessHandler(function(accounts) {
+          console.log('[CLIENT] Accounts loaded:', accounts);
           var select = document.getElementById('defaultAccount');
-          accounts.forEach(function(account) {
+          
+          // Clear existing options (except first one)
+          while (select.options.length > 1) {
+            select.remove(1);
+          }
+          
+          if (!accounts || accounts.length === 0) {
+            console.warn('[CLIENT] No accounts found!');
+            // Add a message option
             var option = document.createElement('option');
-            option.value = account;
-            option.text = account;
+            option.value = '';
+            option.text = '-- Сначала создайте счет в листе "Счета" --';
+            option.disabled = true;
             select.appendChild(option);
-          });
+          } else {
+            accounts.forEach(function(account) {
+              var option = document.createElement('option');
+              option.value = account;
+              option.text = account;
+              select.appendChild(option);
+            });
+          }
         })
         .withFailureHandler(function(error) {
-          console.error('Error loading accounts:', error);
+          console.error('[CLIENT] Error loading accounts:', error);
+          var select = document.getElementById('defaultAccount');
+          var option = document.createElement('option');
+          option.value = '';
+          option.text = '-- Ошибка загрузки счетов --';
+          option.disabled = true;
+          select.appendChild(option);
         })
-        .pfGetAccountsList_();
+        .pfGetAccountsList();
     }
     
     function handlePreview() {
@@ -242,6 +266,13 @@
       
       var defaultAccount = document.getElementById('defaultAccount').value;
       var defaultCurrency = document.getElementById('defaultCurrency').value;
+      
+      console.log('[CLIENT] Preview clicked, defaultAccount:', defaultAccount, 'defaultCurrency:', defaultCurrency);
+      
+      if (!defaultAccount || defaultAccount.trim() === '') {
+        showError('Пожалуйста, выберите счет по умолчанию. Если список пуст, создайте счет в листе "Счета" и обновите страницу.');
+        return;
+      }
       
       document.getElementById('previewBtn').disabled = true;
       document.getElementById('message').innerHTML = '<div>Обработка файла...</div>';

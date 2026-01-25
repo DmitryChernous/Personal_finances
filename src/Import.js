@@ -840,28 +840,53 @@ function pfGetExistingTransactionKeys() {
 
 /**
  * Get list of accounts for dropdown.
+ * Public function for HTML Service.
  * @returns {Array<string>}
  */
-function pfGetAccountsList_() {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var accountsSheet = pfFindSheetByKey_(ss, PF_SHEET_KEYS.ACCOUNTS);
-  if (!accountsSheet || accountsSheet.getLastRow() <= 1) {
+function pfGetAccountsList() {
+  Logger.log('[SERVER] pfGetAccountsList called');
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var accountsSheet = pfFindSheetByKey_(ss, PF_SHEET_KEYS.ACCOUNTS);
+    
+    if (!accountsSheet) {
+      Logger.log('[SERVER] Accounts sheet not found');
+      return [];
+    }
+    
+    if (accountsSheet.getLastRow() <= 1) {
+      Logger.log('[SERVER] Accounts sheet is empty (only headers)');
+      return [];
+    }
+    
+    Logger.log('[SERVER] Accounts sheet found, lastRow: ' + accountsSheet.getLastRow());
+    
+    var accounts = [];
+    var accountCol = pfColumnIndex_(PF_ACCOUNTS_SCHEMA, 'Account');
+    
+    Logger.log('[SERVER] Account column index: ' + accountCol);
+    
+    if (accountCol) {
+      var data = accountsSheet.getRange(2, accountCol, accountsSheet.getLastRow() - 1, 1).getValues();
+      Logger.log('[SERVER] Accounts data rows: ' + data.length);
+      
+      for (var i = 0; i < data.length; i++) {
+        var account = String(data[i][0] || '').trim();
+        if (account) {
+          accounts.push(account);
+        }
+      }
+    } else {
+      Logger.log('[SERVER] Account column not found in schema');
+    }
+    
+    Logger.log('[SERVER] pfGetAccountsList returning ' + accounts.length + ' accounts: ' + accounts.join(', '));
+    return accounts;
+  } catch (e) {
+    Logger.log('[SERVER] ERROR in pfGetAccountsList: ' + e.toString());
+    Logger.log('[SERVER] Error stack: ' + (e.stack || 'No stack'));
     return [];
   }
-  
-  var accounts = [];
-  var accountCol = pfColumnIndex_(PF_ACCOUNTS_SCHEMA, 'Account');
-  if (accountCol) {
-    var data = accountsSheet.getRange(2, accountCol, accountsSheet.getLastRow() - 1, 1).getValues();
-    for (var i = 0; i < data.length; i++) {
-      var account = String(data[i][0] || '').trim();
-      if (account) {
-        accounts.push(account);
-      }
-    }
-  }
-  
-  return accounts;
 }
 
 /**
