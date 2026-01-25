@@ -94,7 +94,7 @@ function pfConfigureTransactionsSheet_(ss) {
 
   if (typeCol) {
     var ruleType = SpreadsheetApp.newDataValidation()
-      .requireValueInList(['expense', 'income', 'transfer'], true)
+      .requireValueInList([PF_TRANSACTION_TYPE.EXPENSE, PF_TRANSACTION_TYPE.INCOME, PF_TRANSACTION_TYPE.TRANSFER], true)
       .setAllowInvalid(false)
       .build();
     sheet.getRange(2, typeCol, sheet.getMaxRows() - 1, 1).setDataValidation(ruleType);

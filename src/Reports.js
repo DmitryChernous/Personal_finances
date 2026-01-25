@@ -184,7 +184,7 @@ function pfInitializeReports_(ss) {
         
         // Filter: current month, expense, ok status, has category.
         if (date && date >= monthStart && date <= monthEnd && 
-            type === 'expense' && status === 'ok' && category && String(category).trim() !== '') {
+            type === PF_TRANSACTION_TYPE.EXPENSE && status === PF_TRANSACTION_STATUS.OK && category && String(category).trim() !== '') {
           var cat = String(category).trim();
           if (!categoryTotals[cat]) {
             categoryTotals[cat] = 0;
@@ -291,7 +291,7 @@ function pfInitializeReports_(ss) {
         var amount = rowData[amountIdx];
         
         // Filter: current month, ok status, exclude transfers.
-        if (date && date >= monthStart && date <= monthEnd && status === 'ok' && type !== 'transfer') {
+        if (date && date >= monthStart && date <= monthEnd && status === PF_TRANSACTION_STATUS.OK && type !== PF_TRANSACTION_TYPE.TRANSFER) {
           if (type === 'income') {
             income += Number(amount) || 0;
           } else if (type === 'expense') {

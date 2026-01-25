@@ -163,7 +163,7 @@ function pfValidateTransactionDTO_(transaction) {
     errors.push({ field: 'Date', message: 'Дата обязательна и должна быть валидной' });
   }
   
-  if (!transaction.type || !['expense', 'income', 'transfer'].includes(transaction.type)) {
+  if (!transaction.type || ![PF_TRANSACTION_TYPE.EXPENSE, PF_TRANSACTION_TYPE.INCOME, PF_TRANSACTION_TYPE.TRANSFER].includes(transaction.type)) {
     errors.push({ field: 'Type', message: 'Тип должен быть expense, income или transfer' });
   }
   
@@ -325,7 +325,7 @@ function pfProcessImportData_(rawData, importer, options) {
         transaction.status = 'needs_review';
         stats.needsReview++;
         stats.errors++;
-      } else if (transaction.status === 'ok') {
+      } else if (transaction.status === PF_TRANSACTION_STATUS.OK) {
         stats.valid++;
       }
       
@@ -335,12 +335,12 @@ function pfProcessImportData_(rawData, importer, options) {
       // Create error transaction
       transactions.push({
         date: new Date(),
-        type: 'expense',
+        type: PF_TRANSACTION_TYPE.EXPENSE,
         account: '',
         amount: 0,
-        currency: 'RUB',
-        source: options.source || 'import:error',
-        status: 'needs_review',
+        currency: PF_DEFAULT_CURRENCY,
+        source: options.source || PF_IMPORT_SOURCE.ERROR,
+        status: PF_TRANSACTION_STATUS.NEEDS_REVIEW,
         errors: [{ field: 'General', message: 'Ошибка парсинга: ' + e.toString() }],
         rawData: JSON.stringify(rawData[i])
       });
@@ -694,7 +694,7 @@ function pfCommitImport_(includeNeedsReview) {
       var row = data[i];
       
       // Check status - normalize to string
-      var statusValue = statusColIdx ? String(row[statusColIdx - 1] || '').trim() : 'ok';
+      var statusValue = statusColIdx ? String(row[statusColIdx - 1] || '').trim() : PF_TRANSACTION_STATUS.OK;
       var hasErrors = false;
       
       try {
@@ -709,7 +709,7 @@ function pfCommitImport_(includeNeedsReview) {
       }
       
       // Skip duplicates
-      if (statusValue === 'duplicate') {
+      if (statusValue === PF_TRANSACTION_STATUS.DUPLICATE) {
         stats.skipped++;
         if (i < 5) {
           Logger.log('[SERVER] Skipping duplicate row ' + (i + 2));
@@ -718,7 +718,7 @@ function pfCommitImport_(includeNeedsReview) {
       }
       
       // Skip needs_review if not including
-      if (statusValue === 'needs_review' && !includeNeedsReview) {
+      if (statusValue === PF_TRANSACTION_STATUS.NEEDS_REVIEW && !includeNeedsReview) {
         stats.needsReview++;
         if (i < 5) {
           Logger.log('[SERVER] Skipping needs_review row ' + (i + 2) + ' (not including)');
@@ -1009,7 +1009,7 @@ function pfProcessDataBatch(rawDataJson, importerType, options, batchSize, start
       throw new Error('Importer not found');
     }
     
-    var sourceName = importerType === 'sberbank' ? 'import:sberbank' : 'import:csv';
+    var sourceName = importerType === 'sberbank' ? PF_IMPORT_SOURCE.SBERBANK : PF_IMPORT_SOURCE.CSV;
     var transactions = [];
     var stats = {
       valid: 0,
@@ -1045,17 +1045,17 @@ function pfProcessDataBatch(rawDataJson, importerType, options, batchSize, start
         var dedupeKey = importer.dedupeKey(transaction);
         
         if (existingKeys[dedupeKey]) {
-          transaction.status = 'duplicate';
+          transaction.status = PF_TRANSACTION_STATUS.DUPLICATE;
           stats.duplicates++;
         } else {
           existingKeys[dedupeKey] = true;
         }
         
         if (transaction.errors && transaction.errors.length > 0) {
-          transaction.status = 'needs_review';
+          transaction.status = PF_TRANSACTION_STATUS.NEEDS_REVIEW;
           stats.needsReview++;
           stats.errors++;
-        } else if (transaction.status === 'ok') {
+        } else if (transaction.status === PF_TRANSACTION_STATUS.OK) {
           stats.valid++;
         }
         
@@ -1072,12 +1072,12 @@ function pfProcessDataBatch(rawDataJson, importerType, options, batchSize, start
         stats.errors++;
         transactions.push({
           date: new Date().toISOString(), // Use ISO string instead of Date object
-          type: 'expense',
+          type: PF_TRANSACTION_TYPE.EXPENSE,
           account: '',
           amount: 0,
-          currency: 'RUB',
+          currency: PF_DEFAULT_CURRENCY,
           source: sourceName,
-          status: 'needs_review',
+          status: PF_TRANSACTION_STATUS.NEEDS_REVIEW,
           errors: [{ field: 'General', message: 'Ошибка парсинга (строка ' + (i + 1) + '): ' + e.toString() }],
           rawData: JSON.stringify(rawData[i])
         });
@@ -1197,7 +1197,7 @@ function pfProcessFileImport_(fileContent, options) {
       errors: 0
     };
     
-    var batchSize = 200; // Process 200 at a time
+    var batchSize = PF_IMPORT_BATCH_SIZE; // Process in batches
     var processed = 0;
     
         while (processed < parseResult.rawData.length) {

@@ -59,7 +59,7 @@ function pfValidateTransactionRow_(sheet, rowNum) {
   }
 
   // Business rules based on Type.
-  if (typeValue === 'transfer') {
+  if (typeValue === PF_TRANSACTION_TYPE.TRANSFER) {
     var accountToCol = pfColumnIndex_(PF_TRANSACTIONS_SCHEMA, 'AccountTo');
     if (accountToCol && (!row[accountToCol - 1] || String(row[accountToCol - 1]).trim() === '')) {
       errors.push({ column: 'AccountTo', message: 'Для перевода обязателен счет получателя' });
@@ -106,7 +106,7 @@ function pfNormalizeTransactionRow_(sheet, rowNum) {
     if (rowNum > 1) {
       var sourceCol = pfColumnIndex_(PF_TRANSACTIONS_SCHEMA, 'Source');
       if (col.key === 'Source' && sourceCol === colIndex && (!value || String(value).trim() === '')) {
-        values[i] = 'manual';
+        values[i] = PF_IMPORT_SOURCE.MANUAL;
         needsUpdate = true;
       }
 
@@ -118,7 +118,7 @@ function pfNormalizeTransactionRow_(sheet, rowNum) {
 
       var currencyCol = pfColumnIndex_(PF_TRANSACTIONS_SCHEMA, 'Currency');
       if (col.key === 'Currency' && currencyCol === colIndex && (!value || String(value).trim() === '')) {
-        var defaultCurrency = pfGetSetting_(ss, PF_SETUP_KEYS.DEFAULT_CURRENCY) || 'RUB';
+        var defaultCurrency = pfGetSetting_(ss, PF_SETUP_KEYS.DEFAULT_CURRENCY) || PF_DEFAULT_CURRENCY;
         values[i] = defaultCurrency;
         needsUpdate = true;
       }

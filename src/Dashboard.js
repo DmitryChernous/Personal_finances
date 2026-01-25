@@ -161,7 +161,7 @@ function pfInitializeDashboard_(ss) {
         
         // Filter: current month, expense, ok status, has category.
         if (date && date >= monthStart && date <= monthEnd && 
-            type === 'expense' && status === 'ok' && category && String(category).trim() !== '') {
+            type === PF_TRANSACTION_TYPE.EXPENSE && status === PF_TRANSACTION_STATUS.OK && category && String(category).trim() !== '') {
           var cat = String(category).trim();
           if (!categoryTotals[cat]) {
             categoryTotals[cat] = 0;

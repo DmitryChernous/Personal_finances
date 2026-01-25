@@ -211,7 +211,7 @@ var PF_SBERBANK_IMPORTER = {
     if (errors.length > 0) {
       transaction.status = 'needs_review';
     } else {
-      transaction.status = 'ok';
+      transaction.status = PF_TRANSACTION_STATUS.OK;
     }
     
     return transaction;

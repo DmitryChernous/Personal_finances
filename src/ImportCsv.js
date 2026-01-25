@@ -118,9 +118,9 @@ var PF_CSV_IMPORTER = {
     
     // Set status based on errors
     if (errors.length > 0) {
-      transaction.status = 'needs_review';
+      transaction.status = PF_TRANSACTION_STATUS.NEEDS_REVIEW;
     } else {
-      transaction.status = 'ok';
+      transaction.status = PF_TRANSACTION_STATUS.OK;
     }
     
     return transaction;
