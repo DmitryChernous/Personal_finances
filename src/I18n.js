@@ -37,6 +37,7 @@ var PF_I18N = {
       generate_test_data: 'Заполнить тестовыми данными',
       import_transactions: 'Импорт транзакций',
       create_template: 'Создать шаблон',
+      find_duplicate: 'Найти дубликат (по ключу)',
       language: 'Язык',
       lang_ru: 'Русский',
       lang_en: 'English'
@@ -83,6 +84,7 @@ var PF_I18N = {
       generate_test_data: 'Generate test data',
       import_transactions: 'Import transactions',
       create_template: 'Create template',
+      find_duplicate: 'Find duplicate (by key)',
       language: 'Language',
       lang_ru: 'Русский',
       lang_en: 'English'

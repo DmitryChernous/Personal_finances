@@ -14,7 +14,7 @@ function onOpen() {
   menu.addItem(pfT_('menu.refresh_dashboard'), 'pfRefreshDashboard');
   menu.addSeparator();
   menu.addItem(pfT_('menu.import_transactions'), 'pfImportTransactions');
-  menu.addItem('Найти дубликат (по ключу)', 'pfFindDuplicateByKey');
+  menu.addItem(pfT_('menu.find_duplicate'), 'pfFindDuplicateByKey');
   menu.addSeparator();
   menu.addItem(pfT_('menu.generate_test_data'), 'pfGenerateTestData');
   menu.addItem(pfT_('menu.create_template'), 'pfCreateTemplate');
