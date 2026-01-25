@@ -69,31 +69,65 @@ var PF_IMPORTER_INTERFACE = {
 };
 
 /**
- * Creates a deduplication key from transaction data.
- * Uses: date + account + amount + sourceId (if available) or hash of key fields.
- * @param {TransactionDTO} transaction
- * @returns {string}
+ * Unified function to generate deduplication key from transaction data.
+ * Works with both TransactionDTO objects and sheet rows.
+ * 
+ * @param {Object} data - Either TransactionDTO or sheet row array
+ * @param {Object} [options] - Options for row-based generation
+ * @param {number} [options.sourceCol] - Column index for source (1-based)
+ * @param {number} [options.sourceIdCol] - Column index for sourceId (1-based)
+ * @param {number} [options.dateCol] - Column index for date (1-based)
+ * @param {number} [options.accountCol] - Column index for account (1-based)
+ * @param {number} [options.amountCol] - Column index for amount (1-based)
+ * @param {number} [options.typeCol] - Column index for type (1-based)
+ * @returns {string} Deduplication key
  */
-function pfGenerateDedupeKey_(transaction) {
-  // Normalize sourceId - convert to string and trim
-  var sourceId = transaction.sourceId ? String(transaction.sourceId).trim() : '';
+function pfGenerateDedupeKey_(data, options) {
+  options = options || {};
   
+  // Determine if data is TransactionDTO or row array
+  var isRow = Array.isArray(data);
+  
+  var source, sourceId, date, account, amount, type;
+  
+  if (isRow) {
+    // Extract from row array using column indices
+    var row = data;
+    source = options.sourceCol ? String(row[options.sourceCol - 1] || '').trim() : '';
+    sourceId = options.sourceIdCol ? String(row[options.sourceIdCol - 1] || '').trim() : '';
+    date = options.dateCol ? row[options.dateCol - 1] : null;
+    account = options.accountCol ? String(row[options.accountCol - 1] || '').trim() : '';
+    amount = options.amountCol ? row[options.amountCol - 1] : null;
+    type = options.typeCol ? String(row[options.typeCol - 1] || '').trim() : '';
+  } else {
+    // Extract from TransactionDTO object
+    var transaction = data;
+    source = String(transaction.source || '').trim();
+    sourceId = transaction.sourceId ? String(transaction.sourceId).trim() : '';
+    date = transaction.date;
+    account = String(transaction.account || '').trim();
+    amount = transaction.amount;
+    type = String(transaction.type || '').trim();
+  }
+  
+  // Normalize sourceId
+  sourceId = sourceId || '';
+  source = source || '';
+  
+  // Use sourceId if available
   if (sourceId && sourceId !== '') {
-    // Use sourceId if available
-    var source = String(transaction.source || '').trim();
     return source + ':' + sourceId;
   }
   
   // Fallback: hash of key fields
   var dateStr = '';
-  if (transaction.date) {
-    // Handle both Date objects and ISO strings
-    if (transaction.date instanceof Date) {
-      dateStr = Utilities.formatDate(transaction.date, Session.getScriptTimeZone(), 'yyyy-MM-dd');
-    } else if (typeof transaction.date === 'string') {
+  if (date) {
+    if (date instanceof Date) {
+      dateStr = Utilities.formatDate(date, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+    } else if (typeof date === 'string') {
       // Try to parse ISO string
       try {
-        var dateObj = new Date(transaction.date);
+        var dateObj = new Date(date);
         if (!isNaN(dateObj.getTime())) {
           dateStr = Utilities.formatDate(dateObj, Session.getScriptTimeZone(), 'yyyy-MM-dd');
         }
@@ -105,12 +139,11 @@ function pfGenerateDedupeKey_(transaction) {
   
   var keyFields = [
     dateStr,
-    String(transaction.account || '').trim(),
-    String(transaction.amount || ''),
-    String(transaction.type || '').trim()
+    account,
+    String(amount || ''),
+    type
   ].join('|');
   
-  var source = String(transaction.source || '').trim();
   var hash = Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, keyFields).map(function(b) {
     return ('0' + (b & 0xFF).toString(16)).slice(-2);
   }).join('');
@@ -342,36 +375,23 @@ function pfGetExistingTransactionKeys_() {
   for (var i = 0; i < data.length; i++) {
     var row = data[i];
     var source = String(row[sourceCol - 1] || '').trim();
-    var sourceId = sourceIdCol ? String(row[sourceIdCol - 1] || '').trim() : '';
     
     // Only process rows with source
     if (!source) {
       continue;
     }
     
-    if (sourceId && sourceId !== '') {
-      // Use sourceId if available
-      keys[source + ':' + sourceId] = true;
-    } else {
-      // Generate hash key if no sourceId
-      var date = row[dateCol - 1];
-      var account = String(row[accountCol - 1] || '').trim();
-      var amount = row[amountCol - 1];
-      var type = String(row[typeCol - 1] || '').trim();
-      
-      var keyFields = [
-        date ? Utilities.formatDate(date, Session.getScriptTimeZone(), 'yyyy-MM-dd') : '',
-        account,
-        String(amount || ''),
-        type
-      ].join('|');
-      
-      var hash = Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, keyFields).map(function(b) {
-        return ('0' + (b & 0xFF).toString(16)).slice(-2);
-      }).join('');
-      
-      keys[(source || 'unknown') + ':' + hash] = true;
-    }
+    // Use unified function to generate key
+    var dedupeKey = pfGenerateDedupeKey_(row, {
+      sourceCol: sourceCol,
+      sourceIdCol: sourceIdCol,
+      dateCol: dateCol,
+      accountCol: accountCol,
+      amountCol: amountCol,
+      typeCol: typeCol
+    });
+    
+    keys[dedupeKey] = true;
   }
   
   return keys;
@@ -568,35 +588,18 @@ function pfFindDuplicateTransaction(dedupeKey) {
     checkedCount++;
     var rowSourceId = sourceIdCol ? String(row[sourceIdCol - 1] || '').trim() : '';
     
-    // Check if this row matches the dedupeKey
-    var rowKey = null;
-    if (rowSourceId && rowSourceId !== '') {
-      rowKey = rowSource + ':' + rowSourceId;
-      if (checkedCount <= 5) {
-        sampleKeys.push('Row ' + (i + 2) + ': ' + rowKey);
-      }
-    } else {
-      // Generate hash key
-      var date = row[dateCol - 1];
-      var account = String(row[accountCol - 1] || '').trim();
-      var amount = row[amountCol - 1];
-      var type = String(row[typeCol - 1] || '').trim();
-      
-      var keyFields = [
-        date ? Utilities.formatDate(date, Session.getScriptTimeZone(), 'yyyy-MM-dd') : '',
-        account,
-        String(amount || ''),
-        type
-      ].join('|');
-      
-      var hash = Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, keyFields).map(function(b) {
-        return ('0' + (b & 0xFF).toString(16)).slice(-2);
-      }).join('');
-      
-      rowKey = (rowSource || 'unknown') + ':' + hash;
-      if (checkedCount <= 5) {
-        sampleKeys.push('Row ' + (i + 2) + ': ' + rowKey + ' (hash from: ' + keyFields + ')');
-      }
+    // Use unified function to generate key for this row
+    var rowKey = pfGenerateDedupeKey_(row, {
+      sourceCol: sourceCol,
+      sourceIdCol: sourceIdCol,
+      dateCol: dateCol,
+      accountCol: accountCol,
+      amountCol: amountCol,
+      typeCol: typeCol
+    });
+    
+    if (checkedCount <= 5) {
+      sampleKeys.push('Row ' + (i + 2) + ': ' + rowKey);
     }
     
     if (rowKey === dedupeKey) {
