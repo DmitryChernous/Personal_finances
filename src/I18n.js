@@ -44,6 +44,7 @@ var PF_I18N = {
       update_budgets: 'Обновить бюджеты',
       create_recurring: 'Создать регулярные платежи',
       apply_auto_categorization: 'Применить автокатегоризацию',
+      quick_entry: 'Быстрый ввод транзакции',
       language: 'Язык',
       lang_ru: 'Русский',
       lang_en: 'English'
@@ -130,6 +131,7 @@ var PF_I18N = {
       update_budgets: 'Update budgets',
       create_recurring: 'Create recurring transactions',
       apply_auto_categorization: 'Apply auto-categorization',
+      quick_entry: 'Quick Transaction Entry',
       language: 'Language',
       lang_ru: 'Русский',
       lang_en: 'English'

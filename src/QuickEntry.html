@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 15px;
+      margin: 0;
+      font-size: 14px;
+    }
+    h2 {
+      margin-top: 0;
+      margin-bottom: 15px;
+      font-size: 18px;
+      color: #333;
+    }
+    .form-group {
+      margin-bottom: 15px;
+    }
+    label {
+      display: block;
+      margin-bottom: 5px;
+      font-weight: bold;
+      color: #555;
+    }
+    .required {
+      color: #d32f2f;
+    }
+    input[type="date"],
+    input[type="number"],
+    input[type="text"],
+    textarea,
+    select {
+      width: 100%;
+      padding: 8px;
+      margin-bottom: 5px;
+      box-sizing: border-box;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      font-size: 14px;
+    }
+    input:focus,
+    textarea:focus,
+    select:focus {
+      outline: none;
+      border-color: #4285f4;
+      box-shadow: 0 0 0 2px rgba(66, 133, 244, 0.2);
+    }
+    textarea {
+      resize: vertical;
+      min-height: 60px;
+    }
+    .form-row {
+      display: flex;
+      gap: 10px;
+    }
+    .form-row .form-group {
+      flex: 1;
+    }
+    button {
+      width: 100%;
+      padding: 12px;
+      margin-bottom: 10px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: bold;
+      transition: background-color 0.2s;
+    }
+    button.primary {
+      background-color: #4285f4;
+      color: white;
+    }
+    button.primary:hover {
+      background-color: #357ae8;
+    }
+    button.secondary {
+      background-color: #34a853;
+      color: white;
+    }
+    button.secondary:hover {
+      background-color: #2d8f47;
+    }
+    button.cancel {
+      background-color: #ea4335;
+      color: white;
+    }
+    button.cancel:hover {
+      background-color: #d33b2c;
+    }
+    button:disabled {
+      background-color: #ccc;
+      cursor: not-allowed;
+    }
+    .error {
+      color: #d32f2f;
+      font-size: 12px;
+      margin-top: 5px;
+      display: none;
+    }
+    .error.show {
+      display: block;
+    }
+    .success {
+      color: #388e3c;
+      font-size: 12px;
+      margin-top: 5px;
+      display: none;
+    }
+    .success.show {
+      display: block;
+    }
+    .info {
+      background-color: #e3f2fd;
+      padding: 10px;
+      border-radius: 4px;
+      margin-bottom: 15px;
+      font-size: 12px;
+      color: #1976d2;
+    }
+    .hidden {
+      display: none;
+    }
+    .loading {
+      opacity: 0.6;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <h2>Быстрый ввод транзакции</h2>
+  
+  <div id="message" class="info" style="display: none;"></div>
+  
+  <form id="transactionForm">
+    <div class="form-group">
+      <label for="date">Дата <span class="required">*</span></label>
+      <input type="date" id="date" required>
+    </div>
+    
+    <div class="form-group">
+      <label for="type">Тип <span class="required">*</span></label>
+      <select id="type" required>
+        <option value="">-- Выберите тип --</option>
+        <option value="expense">Расход</option>
+        <option value="income">Доход</option>
+        <option value="transfer">Перевод</option>
+      </select>
+      <div id="typeError" class="error"></div>
+    </div>
+    
+    <div class="form-group">
+      <label for="account">Счет <span class="required">*</span></label>
+      <select id="account" required>
+        <option value="">-- Загрузка... --</option>
+      </select>
+      <div id="accountError" class="error"></div>
+    </div>
+    
+    <div class="form-group hidden" id="accountToGroup">
+      <label for="accountTo">Счет получателя <span class="required">*</span></label>
+      <select id="accountTo">
+        <option value="">-- Выберите счет --</option>
+      </select>
+      <div id="accountToError" class="error"></div>
+    </div>
+    
+    <div class="form-row">
+      <div class="form-group">
+        <label for="amount">Сумма <span class="required">*</span></label>
+        <input type="number" id="amount" step="0.01" min="0.01" required>
+        <div id="amountError" class="error"></div>
+      </div>
+      
+      <div class="form-group">
+        <label for="currency">Валюта <span class="required">*</span></label>
+        <select id="currency" required>
+          <option value="RUB">RUB</option>
+          <option value="USD">USD</option>
+          <option value="EUR">EUR</option>
+        </select>
+      </div>
+    </div>
+    
+    <div class="form-group">
+      <label for="category">Категория</label>
+      <select id="category">
+        <option value="">-- Выберите категорию --</option>
+      </select>
+    </div>
+    
+    <div class="form-group hidden" id="subcategoryGroup">
+      <label for="subcategory">Подкатегория</label>
+      <select id="subcategory">
+        <option value="">-- Выберите подкатегорию --</option>
+      </select>
+    </div>
+    
+    <div class="form-group">
+      <label for="merchant">Место/контрагент</label>
+      <input type="text" id="merchant" placeholder="Например: Пятёрочка">
+    </div>
+    
+    <div class="form-group">
+      <label for="description">Комментарий</label>
+      <textarea id="description" placeholder="Описание транзакции"></textarea>
+    </div>
+    
+    <button type="button" id="addBtn" class="primary">Добавить</button>
+    <button type="button" id="addAndMoreBtn" class="secondary">Добавить и еще одну</button>
+    <button type="button" id="cancelBtn" class="cancel">Отмена</button>
+  </form>
+
+  <script>
+    // Set today's date as default
+    var today = new Date();
+    var todayStr = today.getFullYear() + '-' + 
+      String(today.getMonth() + 1).padStart(2, '0') + '-' + 
+      String(today.getDate()).padStart(2, '0');
+    document.getElementById('date').value = todayStr;
+    
+    // Load accounts and categories on page load
+    window.onload = function() {
+      loadAccounts();
+      loadCategories();
+      
+      // Setup type change handler
+      document.getElementById('type').addEventListener('change', function() {
+        handleTypeChange();
+      });
+      
+      // Setup category change handler
+      document.getElementById('category').addEventListener('change', function() {
+        handleCategoryChange();
+      });
+      
+      // Setup auto-categorization on merchant/description change
+      var merchantField = document.getElementById('merchant');
+      var descriptionField = document.getElementById('description');
+      var autoCategorizeTimeout = null;
+      
+      function triggerAutoCategorization() {
+        clearTimeout(autoCategorizeTimeout);
+        autoCategorizeTimeout = setTimeout(function() {
+          autoCategorize();
+        }, 500); // Wait 500ms after user stops typing
+      }
+      
+      merchantField.addEventListener('input', triggerAutoCategorization);
+      descriptionField.addEventListener('input', triggerAutoCategorization);
+      
+      // Setup form handlers
+      document.getElementById('addBtn').addEventListener('click', handleSubmit);
+      document.getElementById('addAndMoreBtn').addEventListener('click', handleAddAndMore);
+      document.getElementById('cancelBtn').addEventListener('click', function() {
+        google.script.host.close();
+      });
+    };
+    
+    function loadAccounts() {
+      google.script.run
+        .withSuccessHandler(function(accounts) {
+          var select = document.getElementById('account');
+          var accountToSelect = document.getElementById('accountTo');
+          
+          // Clear existing options (except first one)
+          while (select.options.length > 1) {
+            select.remove(1);
+          }
+          while (accountToSelect.options.length > 1) {
+            accountToSelect.remove(1);
+          }
+          
+          if (!accounts || accounts.length === 0) {
+            var option = document.createElement('option');
+            option.value = '';
+            option.text = '-- Сначала создайте счет в листе "Счета" --';
+            option.disabled = true;
+            select.appendChild(option);
+          } else {
+            accounts.forEach(function(account) {
+              var option = document.createElement('option');
+              option.value = account;
+              option.text = account;
+              select.appendChild(option);
+              
+              // Also add to accountTo
+              var optionTo = document.createElement('option');
+              optionTo.value = account;
+              optionTo.text = account;
+              accountToSelect.appendChild(optionTo);
+            });
+          }
+        })
+        .withFailureHandler(function(error) {
+          console.error('Error loading accounts:', error);
+          showError('Ошибка загрузки счетов: ' + error.message);
+        })
+        .pfGetAccountsForQuickEntry();
+    }
+    
+    function loadCategories() {
+      google.script.run
+        .withSuccessHandler(function(categories) {
+          var select = document.getElementById('category');
+          
+          // Clear existing options (except first one)
+          while (select.options.length > 1) {
+            select.remove(1);
+          }
+          
+          if (!categories || categories.length === 0) {
+            var option = document.createElement('option');
+            option.value = '';
+            option.text = '-- Сначала создайте категорию в листе "Категории" --';
+            option.disabled = true;
+            select.appendChild(option);
+          } else {
+            categories.forEach(function(category) {
+              var option = document.createElement('option');
+              option.value = category;
+              option.text = category;
+              select.appendChild(option);
+            });
+          }
+        })
+        .withFailureHandler(function(error) {
+          console.error('Error loading categories:', error);
+          // Don't show error for categories, it's optional
+        })
+        .pfGetCategoriesForQuickEntry();
+    }
+    
+    function loadSubcategories(category) {
+      if (!category || category === '') {
+        document.getElementById('subcategoryGroup').classList.add('hidden');
+        return;
+      }
+      
+      google.script.run
+        .withSuccessHandler(function(subcategories) {
+          var select = document.getElementById('subcategory');
+          
+          // Clear existing options (except first one)
+          while (select.options.length > 1) {
+            select.remove(1);
+          }
+          
+          if (!subcategories || subcategories.length === 0) {
+            document.getElementById('subcategoryGroup').classList.add('hidden');
+          } else {
+            document.getElementById('subcategoryGroup').classList.remove('hidden');
+            subcategories.forEach(function(subcategory) {
+              var option = document.createElement('option');
+              option.value = subcategory;
+              option.text = subcategory;
+              select.appendChild(option);
+            });
+          }
+        })
+        .withFailureHandler(function(error) {
+          console.error('Error loading subcategories:', error);
+          document.getElementById('subcategoryGroup').classList.add('hidden');
+        })
+        .pfGetSubcategoriesForQuickEntry(category);
+    }
+    
+    function handleTypeChange() {
+      var type = document.getElementById('type').value;
+      var accountToGroup = document.getElementById('accountToGroup');
+      
+      if (type === 'transfer') {
+        accountToGroup.classList.remove('hidden');
+        document.getElementById('accountTo').required = true;
+      } else {
+        accountToGroup.classList.add('hidden');
+        document.getElementById('accountTo').required = false;
+        document.getElementById('accountTo').value = '';
+      }
+    }
+    
+    function handleCategoryChange() {
+      var category = document.getElementById('category').value;
+      loadSubcategories(category);
+    }
+    
+    function autoCategorize() {
+      var merchant = document.getElementById('merchant').value.trim();
+      var description = document.getElementById('description').value.trim();
+      var currentCategory = document.getElementById('category').value;
+      
+      // Don't auto-categorize if category is already set
+      if (currentCategory && currentCategory !== '') {
+        return;
+      }
+      
+      // Don't auto-categorize if both fields are empty
+      if (!merchant && !description) {
+        return;
+      }
+      
+      google.script.run
+        .withSuccessHandler(function(result) {
+          if (result && result.category) {
+            document.getElementById('category').value = result.category;
+            if (result.subcategory) {
+              loadSubcategories(result.category);
+              // Wait a bit for subcategories to load, then set value
+              setTimeout(function() {
+                document.getElementById('subcategory').value = result.subcategory;
+              }, 300);
+            }
+            showMessage('Категория установлена автоматически: ' + result.category, 'success');
+          }
+        })
+        .withFailureHandler(function(error) {
+          // Silently fail - auto-categorization is optional
+          console.log('Auto-categorization failed:', error);
+        })
+        .pfAutoCategorizeForQuickEntry(merchant, description);
+    }
+    
+    function validateForm() {
+      var errors = [];
+      
+      // Clear previous errors
+      document.querySelectorAll('.error').forEach(function(el) {
+        el.textContent = '';
+        el.classList.remove('show');
+      });
+      
+      var date = document.getElementById('date').value;
+      if (!date) {
+        errors.push({ field: 'date', message: 'Дата обязательна' });
+      }
+      
+      var type = document.getElementById('type').value;
+      if (!type) {
+        errors.push({ field: 'type', message: 'Тип обязателен' });
+      }
+      
+      var account = document.getElementById('account').value;
+      if (!account) {
+        errors.push({ field: 'account', message: 'Счет обязателен' });
+      }
+      
+      if (type === 'transfer') {
+        var accountTo = document.getElementById('accountTo').value;
+        if (!accountTo) {
+          errors.push({ field: 'accountTo', message: 'Счет получателя обязателен для перевода' });
+        }
+        if (accountTo === account) {
+          errors.push({ field: 'accountTo', message: 'Счет получателя должен отличаться от счета отправителя' });
+        }
+      }
+      
+      var amount = parseFloat(document.getElementById('amount').value);
+      if (!amount || amount <= 0 || isNaN(amount)) {
+        errors.push({ field: 'amount', message: 'Сумма должна быть положительным числом' });
+      }
+      
+      var currency = document.getElementById('currency').value;
+      if (!currency) {
+        errors.push({ field: 'currency', message: 'Валюта обязательна' });
+      }
+      
+      // Show errors
+      errors.forEach(function(error) {
+        var errorEl = document.getElementById(error.field + 'Error');
+        if (errorEl) {
+          errorEl.textContent = error.message;
+          errorEl.classList.add('show');
+        }
+      });
+      
+      return errors.length === 0;
+    }
+    
+    function getFormData() {
+      return {
+        date: document.getElementById('date').value,
+        type: document.getElementById('type').value,
+        account: document.getElementById('account').value,
+        accountTo: document.getElementById('accountTo').value || '',
+        amount: parseFloat(document.getElementById('amount').value),
+        currency: document.getElementById('currency').value,
+        category: document.getElementById('category').value || '',
+        subcategory: document.getElementById('subcategory').value || '',
+        merchant: document.getElementById('merchant').value.trim() || '',
+        description: document.getElementById('description').value.trim() || ''
+      };
+    }
+    
+    function clearForm() {
+      document.getElementById('transactionForm').reset();
+      document.getElementById('date').value = todayStr;
+      document.getElementById('type').value = '';
+      document.getElementById('accountToGroup').classList.add('hidden');
+      document.getElementById('subcategoryGroup').classList.add('hidden');
+      document.querySelectorAll('.error').forEach(function(el) {
+        el.textContent = '';
+        el.classList.remove('show');
+      });
+      document.getElementById('message').style.display = 'none';
+    }
+    
+    function showError(message) {
+      var messageEl = document.getElementById('message');
+      messageEl.textContent = message;
+      messageEl.className = 'info';
+      messageEl.style.backgroundColor = '#ffebee';
+      messageEl.style.color = '#c62828';
+      messageEl.style.display = 'block';
+    }
+    
+    function showMessage(message, type) {
+      var messageEl = document.getElementById('message');
+      messageEl.textContent = message;
+      if (type === 'success') {
+        messageEl.style.backgroundColor = '#e8f5e9';
+        messageEl.style.color = '#2e7d32';
+      } else {
+        messageEl.style.backgroundColor = '#e3f2fd';
+        messageEl.style.color = '#1976d2';
+      }
+      messageEl.style.display = 'block';
+      setTimeout(function() {
+        messageEl.style.display = 'none';
+      }, 3000);
+    }
+    
+    function handleSubmit() {
+      if (!validateForm()) {
+        return;
+      }
+      
+      var data = getFormData();
+      
+      document.getElementById('addBtn').disabled = true;
+      document.getElementById('addAndMoreBtn').disabled = true;
+      document.body.classList.add('loading');
+      
+      google.script.run
+        .withSuccessHandler(function(result) {
+          document.body.classList.remove('loading');
+          document.getElementById('addBtn').disabled = false;
+          document.getElementById('addAndMoreBtn').disabled = false;
+          
+          if (result && result.success) {
+            showMessage('Транзакция успешно добавлена!', 'success');
+            setTimeout(function() {
+              google.script.host.close();
+            }, 1000);
+          } else {
+            showError(result ? result.message : 'Ошибка при добавлении транзакции');
+          }
+        })
+        .withFailureHandler(function(error) {
+          document.body.classList.remove('loading');
+          document.getElementById('addBtn').disabled = false;
+          document.getElementById('addAndMoreBtn').disabled = false;
+          showError('Ошибка: ' + (error.message || error.toString()));
+        })
+        .pfAddQuickTransaction(data);
+    }
+    
+    function handleAddAndMore() {
+      if (!validateForm()) {
+        return;
+      }
+      
+      var data = getFormData();
+      
+      document.getElementById('addBtn').disabled = true;
+      document.getElementById('addAndMoreBtn').disabled = true;
+      document.body.classList.add('loading');
+      
+      google.script.run
+        .withSuccessHandler(function(result) {
+          document.body.classList.remove('loading');
+          document.getElementById('addBtn').disabled = false;
+          document.getElementById('addAndMoreBtn').disabled = false;
+          
+          if (result && result.success) {
+            showMessage('Транзакция успешно добавлена!', 'success');
+            clearForm();
+            // Focus on first field
+            document.getElementById('date').focus();
+          } else {
+            showError(result ? result.message : 'Ошибка при добавлении транзакции');
+          }
+        })
+        .withFailureHandler(function(error) {
+          document.body.classList.remove('loading');
+          document.getElementById('addBtn').disabled = false;
+          document.getElementById('addAndMoreBtn').disabled = false;
+          showError('Ошибка: ' + (error.message || error.toString()));
+        })
+        .pfAddQuickTransaction(data);
+    }
+  </script>
+</body>
+</html>
