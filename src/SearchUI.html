@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 15px;
+      margin: 0;
+      font-size: 14px;
+    }
+    h2 {
+      margin-top: 0;
+      margin-bottom: 15px;
+      font-size: 18px;
+      color: #333;
+    }
+    .form-group {
+      margin-bottom: 15px;
+    }
+    label {
+      display: block;
+      margin-bottom: 5px;
+      font-weight: bold;
+      color: #555;
+    }
+    input[type="text"],
+    input[type="date"],
+    select {
+      width: 100%;
+      padding: 8px;
+      margin-bottom: 5px;
+      box-sizing: border-box;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      font-size: 14px;
+    }
+    input:focus,
+    select:focus {
+      outline: none;
+      border-color: #4285f4;
+      box-shadow: 0 0 0 2px rgba(66, 133, 244, 0.2);
+    }
+    .form-row {
+      display: flex;
+      gap: 10px;
+    }
+    .form-row .form-group {
+      flex: 1;
+    }
+    button {
+      width: 100%;
+      padding: 12px;
+      margin-bottom: 10px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: bold;
+      transition: background-color 0.2s;
+    }
+    button.primary {
+      background-color: #4285f4;
+      color: white;
+    }
+    button.primary:hover {
+      background-color: #357ae8;
+    }
+    button.secondary {
+      background-color: #6c757d;
+      color: white;
+    }
+    button.secondary:hover {
+      background-color: #5a6268;
+    }
+    button:disabled {
+      background-color: #ccc;
+      cursor: not-allowed;
+    }
+    .error {
+      color: #d32f2f;
+      font-size: 12px;
+      margin-top: 5px;
+    }
+    .success {
+      color: #2e7d32;
+      font-size: 12px;
+      margin-top: 5px;
+    }
+    .results-container {
+      margin-top: 20px;
+      max-height: 400px;
+      overflow-y: auto;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      padding: 10px;
+    }
+    .results-header {
+      font-weight: bold;
+      margin-bottom: 10px;
+      color: #333;
+    }
+    .result-item {
+      padding: 8px;
+      margin-bottom: 8px;
+      border: 1px solid #e0e0e0;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: background-color 0.2s;
+    }
+    .result-item:hover {
+      background-color: #f5f5f5;
+    }
+    .result-item.selected {
+      background-color: #e3f2fd;
+      border-color: #4285f4;
+    }
+    .result-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 4px;
+    }
+    .result-label {
+      font-weight: bold;
+      color: #666;
+      margin-right: 8px;
+    }
+    .result-value {
+      flex: 1;
+      color: #333;
+    }
+    .tabs {
+      display: flex;
+      margin-bottom: 15px;
+      border-bottom: 2px solid #ddd;
+    }
+    .tab {
+      padding: 10px 20px;
+      cursor: pointer;
+      border: none;
+      background: none;
+      font-size: 14px;
+      color: #666;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -2px;
+    }
+    .tab.active {
+      color: #4285f4;
+      border-bottom-color: #4285f4;
+      font-weight: bold;
+    }
+    .tab-content {
+      display: none;
+    }
+    .tab-content.active {
+      display: block;
+    }
+    .loading {
+      text-align: center;
+      padding: 20px;
+      color: #666;
+    }
+    .empty {
+      text-align: center;
+      padding: 20px;
+      color: #999;
+    }
+  </style>
+</head>
+<body>
+  <h2>Поиск и фильтрация транзакций</h2>
+  
+  <div class="tabs">
+    <button class="tab active" onclick="switchTab('search')">Поиск</button>
+    <button class="tab" onclick="switchTab('filter')">Фильтры</button>
+  </div>
+  
+  <!-- Search Tab -->
+  <div id="search-tab" class="tab-content active">
+    <div class="form-group">
+      <label for="search-query">Поисковый запрос:</label>
+      <input type="text" id="search-query" placeholder="Введите текст для поиска..." />
+      <div class="error" id="search-error" style="display: none;"></div>
+    </div>
+    <button class="primary" onclick="performSearch()">Найти</button>
+    <button class="secondary" onclick="clearSearch()">Очистить подсветку</button>
+  </div>
+  
+  <!-- Filter Tab -->
+  <div id="filter-tab" class="tab-content">
+    <div class="form-group">
+      <label for="filter-start-date">Дата начала:</label>
+      <input type="date" id="filter-start-date" />
+    </div>
+    <div class="form-group">
+      <label for="filter-end-date">Дата окончания:</label>
+      <input type="date" id="filter-end-date" />
+    </div>
+    <div class="form-group">
+      <label for="filter-category">Категория:</label>
+      <select id="filter-category">
+        <option value="">Все категории</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label for="filter-account">Счет:</label>
+      <select id="filter-account">
+        <option value="">Все счета</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label for="filter-type">Тип транзакции:</label>
+      <select id="filter-type">
+        <option value="">Все типы</option>
+        <option value="expense">Расход</option>
+        <option value="income">Доход</option>
+        <option value="transfer">Перевод</option>
+      </select>
+    </div>
+    <button class="primary" onclick="performFilter()">Применить фильтры</button>
+    <button class="secondary" onclick="clearFilter()">Очистить фильтры</button>
+  </div>
+  
+  <!-- Results -->
+  <div class="results-container" id="results-container" style="display: none;">
+    <div class="results-header" id="results-header"></div>
+    <div id="results-list"></div>
+  </div>
+  
+  <script>
+    // Tab switching
+    function switchTab(tabName) {
+      // Update tab buttons
+      var tabs = document.querySelectorAll('.tab');
+      tabs.forEach(function(tab) {
+        tab.classList.remove('active');
+      });
+      event.target.classList.add('active');
+      
+      // Update tab content
+      var contents = document.querySelectorAll('.tab-content');
+      contents.forEach(function(content) {
+        content.classList.remove('active');
+      });
+      document.getElementById(tabName + '-tab').classList.add('active');
+      
+      // Clear results
+      clearResults();
+    }
+    
+    // Load dropdowns on page load
+    window.onload = function() {
+      loadCategories();
+      loadAccounts();
+    };
+    
+    function loadCategories() {
+      google.script.run
+        .withSuccessHandler(function(categories) {
+          var select = document.getElementById('filter-category');
+          categories.forEach(function(cat) {
+            var option = document.createElement('option');
+            option.value = cat;
+            option.textContent = cat;
+            select.appendChild(option);
+          });
+        })
+        .withFailureHandler(function(error) {
+          console.error('Error loading categories:', error);
+        })
+        .pfGetCategoriesForSearch();
+    }
+    
+    function loadAccounts() {
+      google.script.run
+        .withSuccessHandler(function(accounts) {
+          var select = document.getElementById('filter-account');
+          accounts.forEach(function(acc) {
+            var option = document.createElement('option');
+            option.value = acc;
+            option.textContent = acc;
+            select.appendChild(option);
+          });
+        })
+        .withFailureHandler(function(error) {
+          console.error('Error loading accounts:', error);
+        })
+        .pfGetAccountsForSearch();
+    }
+    
+    function performSearch() {
+      var query = document.getElementById('search-query').value.trim();
+      var errorDiv = document.getElementById('search-error');
+      
+      if (!query) {
+        errorDiv.textContent = 'Введите поисковый запрос';
+        errorDiv.style.display = 'block';
+        return;
+      }
+      
+      errorDiv.style.display = 'none';
+      showLoading();
+      
+      google.script.run
+        .withSuccessHandler(function(response) {
+          if (response.success) {
+            displayResults(response.results, 'Найдено транзакций: ' + response.count);
+            if (response.count > 0) {
+              highlightResults(response.results.map(function(r) { return r.rowNum; }));
+            }
+          } else {
+            showError(response.error || 'Ошибка при поиске');
+          }
+        })
+        .withFailureHandler(function(error) {
+          showError('Ошибка: ' + error.message);
+        })
+        .pfSearchTransactions(query);
+    }
+    
+    function performFilter() {
+      var filters = {
+        startDate: document.getElementById('filter-start-date').value ? new Date(document.getElementById('filter-start-date').value) : null,
+        endDate: document.getElementById('filter-end-date').value ? new Date(document.getElementById('filter-end-date').value) : null,
+        category: document.getElementById('filter-category').value || null,
+        account: document.getElementById('filter-account').value || null,
+        type: document.getElementById('filter-type').value || null
+      };
+      
+      // Remove null/empty filters
+      Object.keys(filters).forEach(function(key) {
+        if (!filters[key]) {
+          delete filters[key];
+        }
+      });
+      
+      if (Object.keys(filters).length === 0) {
+        showError('Выберите хотя бы один фильтр');
+        return;
+      }
+      
+      showLoading();
+      
+      google.script.run
+        .withSuccessHandler(function(response) {
+          if (response.success) {
+            displayResults(response.results, 'Найдено транзакций: ' + response.count);
+            if (response.count > 0) {
+              highlightResults(response.results.map(function(r) { return r.rowNum; }));
+            }
+          } else {
+            showError(response.error || 'Ошибка при фильтрации');
+          }
+        })
+        .withFailureHandler(function(error) {
+          showError('Ошибка: ' + error.message);
+        })
+        .pfFilterTransactions(filters);
+    }
+    
+    function displayResults(results, headerText) {
+      var container = document.getElementById('results-container');
+      var header = document.getElementById('results-header');
+      var list = document.getElementById('results-list');
+      
+      header.textContent = headerText;
+      list.innerHTML = '';
+      
+      if (results.length === 0) {
+        list.innerHTML = '<div class="empty">Транзакции не найдены</div>';
+        container.style.display = 'block';
+        return;
+      }
+      
+      results.forEach(function(result) {
+        var item = document.createElement('div');
+        item.className = 'result-item';
+        item.onclick = function() {
+          goToRow(result.rowNum);
+        };
+        
+        var html = '<div class="result-row">';
+        html += '<span class="result-label">Строка:</span>';
+        html += '<span class="result-value">' + result.rowNum + '</span>';
+        html += '</div>';
+        
+        if (result.date) {
+          html += '<div class="result-row">';
+          html += '<span class="result-label">Дата:</span>';
+          html += '<span class="result-value">' + result.date + '</span>';
+          html += '</div>';
+        }
+        
+        if (result.type) {
+          html += '<div class="result-row">';
+          html += '<span class="result-label">Тип:</span>';
+          html += '<span class="result-value">' + result.type + '</span>';
+          html += '</div>';
+        }
+        
+        if (result.amount) {
+          html += '<div class="result-row">';
+          html += '<span class="result-label">Сумма:</span>';
+          html += '<span class="result-value">' + result.amount + '</span>';
+          html += '</div>';
+        }
+        
+        if (result.merchant) {
+          html += '<div class="result-row">';
+          html += '<span class="result-label">Место/Контрагент:</span>';
+          html += '<span class="result-value">' + result.merchant + '</span>';
+          html += '</div>';
+        }
+        
+        if (result.description) {
+          html += '<div class="result-row">';
+          html += '<span class="result-label">Описание:</span>';
+          html += '<span class="result-value">' + result.description + '</span>';
+          html += '</div>';
+        }
+        
+        if (result.category) {
+          html += '<div class="result-row">';
+          html += '<span class="result-label">Категория:</span>';
+          html += '<span class="result-value">' + result.category;
+          if (result.subcategory) {
+            html += ' / ' + result.subcategory;
+          }
+          html += '</span>';
+          html += '</div>';
+        }
+        
+        if (result.matchField) {
+          html += '<div class="result-row">';
+          html += '<span class="result-label">Найдено по:</span>';
+          html += '<span class="result-value">' + result.matchField + '</span>';
+          html += '</div>';
+        }
+        
+        item.innerHTML = html;
+        list.appendChild(item);
+      });
+      
+      container.style.display = 'block';
+    }
+    
+    function showLoading() {
+      var container = document.getElementById('results-container');
+      var list = document.getElementById('results-list');
+      list.innerHTML = '<div class="loading">Загрузка...</div>';
+      container.style.display = 'block';
+    }
+    
+    function showError(message) {
+      var container = document.getElementById('results-container');
+      var list = document.getElementById('results-list');
+      list.innerHTML = '<div class="error">' + message + '</div>';
+      container.style.display = 'block';
+    }
+    
+    function clearResults() {
+      document.getElementById('results-container').style.display = 'none';
+      document.getElementById('results-list').innerHTML = '';
+    }
+    
+    function goToRow(rowNum) {
+      google.script.run
+        .withSuccessHandler(function(response) {
+          if (!response.success) {
+            alert('Ошибка: ' + (response.error || 'Не удалось перейти к строке'));
+          }
+        })
+        .withFailureHandler(function(error) {
+          alert('Ошибка: ' + error.message);
+        })
+        .pfGoToTransactionRow(rowNum);
+    }
+    
+    function highlightResults(rowNums) {
+      google.script.run
+        .withSuccessHandler(function(response) {
+          if (!response.success) {
+            console.error('Error highlighting:', response.error);
+          }
+        })
+        .withFailureHandler(function(error) {
+          console.error('Error highlighting:', error);
+        })
+        .pfHighlightTransactionRows(rowNums);
+    }
+    
+    function clearSearch() {
+      google.script.run
+        .withSuccessHandler(function(response) {
+          if (response.success) {
+            clearResults();
+          }
+        })
+        .withFailureHandler(function(error) {
+          alert('Ошибка: ' + error.message);
+        })
+        .pfClearSearchHighlights();
+    }
+    
+    function clearFilter() {
+      document.getElementById('filter-start-date').value = '';
+      document.getElementById('filter-end-date').value = '';
+      document.getElementById('filter-category').value = '';
+      document.getElementById('filter-account').value = '';
+      document.getElementById('filter-type').value = '';
+      clearResults();
+    }
+  </script>
+</body>
+</html>
