@@ -7,6 +7,12 @@ pnpm-debug.log*
 
 # clasp / Apps Script
 .clasp.json
+
+# Personal bank statements (sensitive data)
+*.csv
+*.pdf
+!**/node_modules/**/*.csv
+!**/node_modules/**/*.pdf
 .clasp*.log
 
 # OS / IDE
