@@ -156,6 +156,11 @@ var PF_PDF_SBERBANK_PARSER = {
         var transactionMatch = null;
         var hasPlusInCategory = false; // Track if category had "+number" pattern
         
+        // DEBUG: Log lines that might contain the problematic pattern
+        if (line.indexOf('647377') !== -1 || (line.indexOf('Прочие операции') !== -1 && line.indexOf('+') !== -1)) {
+          Logger.log('[DEBUG] Processing line: ' + line);
+        }
+        
         // Parse from the end to correctly identify amount and balance
         // Strategy: find last two numbers (balance and amount), then extract category
         var balanceMatch = line.match(/([\d\s]+,\d{2})\s*$/);
