@@ -154,6 +154,7 @@ var PF_PDF_SBERBANK_PARSER = {
         // Format: "31.12.2025 16:40 966521 Перевод СБП 1 500,00 96 776,18"
         // Also: "28.11.2025 11:45 647377 Прочие операции +47 330,86 141 669,66"
         var transactionMatch = null;
+        var hasPlusInCategory = false; // Track if category had "+number" pattern
         
         // Parse from the end to correctly identify amount and balance
         // Strategy: find last two numbers (balance and amount), then extract category
@@ -182,6 +183,7 @@ var PF_PDF_SBERBANK_PARSER = {
               // This indicates income and the number should be combined with amount
               var plusNumberMatch = categoryPart.match(/\+\s*(\d+)\s*$/);
               if (plusNumberMatch) {
+                hasPlusInCategory = true; // Mark that we found "+number" pattern
                 // Extract the number after "+"
                 var plusNumber = parseInt(plusNumberMatch[1], 10);
                 // Remove "+number" from category
@@ -224,6 +226,10 @@ var PF_PDF_SBERBANK_PARSER = {
         // Fallback to original pattern if new approach didn't work
         if (!transactionMatch) {
           transactionMatch = line.match(transactionLinePattern);
+          // Check if original pattern matched and has "+" in category
+          if (transactionMatch && transactionMatch[4]) {
+            hasPlusInCategory = transactionMatch[4].indexOf('+') !== -1;
+          }
         }
         
         if (transactionMatch) {
@@ -247,9 +253,8 @@ var PF_PDF_SBERBANK_PARSER = {
           // Income indicators: "+" in original category (before cleaning), "зачислен", "пополнение", "возврат", "заработная плата"
           var type = 'expense';
           var categoryLower = category.toLowerCase();
-          var originalCategory = improvedMatch ? improvedMatch[4].trim() : category;
           if (amountValue < 0 || 
-              originalCategory.indexOf('+') !== -1 || // "+47", "+350" etc. indicates income
+              hasPlusInCategory || // "+47", "+350" etc. indicates income
               categoryLower.indexOf('зачислен') !== -1 || 
               categoryLower.indexOf('пополнение') !== -1 ||
               categoryLower.indexOf('возврат') !== -1) {
