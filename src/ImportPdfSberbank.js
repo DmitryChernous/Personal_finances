@@ -162,13 +162,23 @@ var PF_PDF_SBERBANK_PARSER = {
         if (balanceMatch) {
           var balanceStr = balanceMatch[1].trim();
           // Remove balance from line to find amount
-          var lineWithoutBalance = line.substring(0, line.lastIndexOf(balanceStr)).trim();
+          var balanceIndex = line.lastIndexOf(balanceStr);
+          if (balanceIndex === -1) {
+            // Fallback: try to find balance differently
+            balanceIndex = line.length - balanceStr.length;
+          }
+          var lineWithoutBalance = line.substring(0, balanceIndex).trim();
           var amountMatch = lineWithoutBalance.match(/([\d\s]+,\d{2})\s*$/);
           
           if (amountMatch) {
             var amountStr = amountMatch[1].trim();
             // Remove amount from line to find category
-            var lineWithoutAmount = lineWithoutBalance.substring(0, lineWithoutBalance.lastIndexOf(amountStr)).trim();
+            var amountIndex = lineWithoutBalance.lastIndexOf(amountStr);
+            if (amountIndex === -1) {
+              // Fallback: try to find amount differently
+              amountIndex = lineWithoutBalance.length - amountStr.length;
+            }
+            var lineWithoutAmount = lineWithoutBalance.substring(0, amountIndex).trim();
             
             // Now extract date, time, code, and category from the beginning
             var headerMatch = lineWithoutAmount.match(/^(\d{2}\.\d{2}\.\d{4})\s+(\d{2}:\d{2})\s+(\d{6})\s+(.+)$/);
@@ -229,6 +239,34 @@ var PF_PDF_SBERBANK_PARSER = {
           // Check if original pattern matched and has "+" in category
           if (transactionMatch && transactionMatch[4]) {
             hasPlusInCategory = transactionMatch[4].indexOf('+') !== -1;
+            // If we have "+number" in category, try to fix it
+            if (hasPlusInCategory) {
+              var originalCategory = transactionMatch[4].trim();
+              var originalAmount = transactionMatch[5].trim();
+              var plusNumberMatch2 = originalCategory.match(/\+\s*(\d+)\s*$/);
+              if (plusNumberMatch2) {
+                var plusNumber2 = parseInt(plusNumberMatch2[1], 10);
+                var cleanedCategory = originalCategory.replace(/\+\s*\d+\s*$/, '').trim();
+                var currentAmount2 = this._parseAmount_(originalAmount);
+                if (currentAmount2 < 1000 && plusNumber2 > 0) {
+                  var combinedAmount2 = plusNumber2 * 1000 + currentAmount2;
+                  var intPart2 = Math.floor(combinedAmount2);
+                  var decPart2 = Math.round((combinedAmount2 - intPart2) * 100);
+                  var intStr2 = intPart2.toString();
+                  var formattedInt2 = '';
+                  for (var k2 = intStr2.length - 1, j2 = 0; k2 >= 0; k2--, j2++) {
+                    if (j2 > 0 && j2 % 3 === 0) {
+                      formattedInt2 = ' ' + formattedInt2;
+                    }
+                    formattedInt2 = intStr2[k2] + formattedInt2;
+                  }
+                  var correctedAmount = formattedInt2 + ',' + (decPart2 < 10 ? '0' : '') + decPart2;
+                  // Update transactionMatch with corrected values
+                  transactionMatch[4] = cleanedCategory;
+                  transactionMatch[5] = correctedAmount;
+                }
+              }
+            }
           }
         }
         
