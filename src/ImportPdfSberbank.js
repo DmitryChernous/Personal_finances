@@ -98,7 +98,14 @@ var PF_PDF_SBERBANK_PARSER = {
     
     // Patterns for parsing
     // Transaction line format: "31.12.2025 16:40 966521 Перевод СБП 1 500,00 96 776,18"
+    // Also handles: "28.11.2025 11:45 647377 Прочие операции +47 330,86 141 669,66"
+    // The pattern needs to handle cases where category contains "+number" before the amount
+    // We match from the end: balance, then amount (with possible spaces), then category
     var transactionLinePattern = /(\d{2}\.\d{2}\.\d{4})\s+(\d{2}:\d{2})\s+(\d{6})\s+(.+?)\s+([\d\s]+,\d{2})\s+([\d\s]+,\d{2})/;
+    // Improved pattern: match from end to handle "+number" in category correctly
+    // Format: date time code category amount balance
+    // We'll use a more sophisticated approach: find amount and balance from the end
+    var transactionLinePatternImproved = /(\d{2}\.\d{2}\.\d{4})\s+(\d{2}:\d{2})\s+(\d{6})\s+(.+)\s+([\d\s]+,\d{2})\s+([\d\s]+,\d{2})$/;
     var datePattern = /(\d{2}\.\d{2}\.\d{4})/;
     var amountPattern = /([\d\s]+,\d{2})/;
     
@@ -145,7 +152,59 @@ var PF_PDF_SBERBANK_PARSER = {
         
         // Try to match full transaction line pattern
         // Format: "31.12.2025 16:40 966521 Перевод СБП 1 500,00 96 776,18"
-        var transactionMatch = line.match(transactionLinePattern);
+        // Also: "28.11.2025 11:45 647377 Прочие операции +47 330,86 141 669,66"
+        var transactionMatch = null;
+        
+        // First try improved pattern (matches from end)
+        var improvedMatch = line.match(transactionLinePatternImproved);
+        if (improvedMatch) {
+          // Extract balance (last number)
+          var balanceStr = improvedMatch[6].trim(); // "141 669,66"
+          // Extract amount (second to last number)
+          var amountStr = improvedMatch[5].trim(); // "47 330,86" or "330,86"
+          
+          // Check if amount contains "+number" pattern in the category part
+          // If category ends with "+number", we need to extract it and add to amount
+          var categoryPart = improvedMatch[4].trim(); // "Прочие операции +47" or "Перевод СБП"
+          
+          // Check if category ends with "+number" pattern (e.g., "+47", "+350")
+          var plusNumberMatch = categoryPart.match(/\+\s*(\d+)\s*$/);
+          if (plusNumberMatch) {
+            // Extract the number after "+"
+            var plusNumber = parseInt(plusNumberMatch[1], 10);
+            // Remove "+number" from category
+            categoryPart = categoryPart.replace(/\+\s*\d+\s*$/, '').trim();
+            // Combine with amount: if amount is "330,86" and plusNumber is 47, result is "47 330,86"
+            // Parse current amount to get decimal part
+            var currentAmount = this._parseAmount_(amountStr);
+            // If current amount is less than 1000, it's likely just the decimal part
+            // Combine: plusNumber * 1000 + currentAmount
+            if (currentAmount < 1000 && plusNumber > 0) {
+              amountStr = (plusNumber * 1000 + currentAmount).toString().replace('.', ',');
+              // Format with spaces for thousands: "47 330,86"
+              if (plusNumber >= 1) {
+                var parts = amountStr.split(',');
+                var intPart = parts[0];
+                var decPart = parts[1] || '00';
+                // Add space every 3 digits from right
+                var formattedInt = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+                amountStr = formattedInt + ',' + decPart;
+              }
+            }
+          }
+          
+          transactionMatch = {
+            1: improvedMatch[1], // date
+            2: improvedMatch[2], // time
+            3: improvedMatch[3], // authCode
+            4: categoryPart,     // category (cleaned)
+            5: amountStr,        // amount (corrected)
+            6: balanceStr        // balance
+          };
+        } else {
+          // Fallback to original pattern
+          transactionMatch = line.match(transactionLinePattern);
+        }
         
         if (transactionMatch) {
           // This is a new transaction line
@@ -157,19 +216,20 @@ var PF_PDF_SBERBANK_PARSER = {
           var dateStr = transactionMatch[1]; // "31.12.2025"
           var timeStr = transactionMatch[2]; // "16:40"
           var authCode = transactionMatch[3]; // "966521"
-          var category = transactionMatch[4].trim(); // "Перевод СБП"
-          var amountStr = transactionMatch[5]; // "1 500,00"
+          var category = transactionMatch[4].trim(); // "Перевод СБП" or "Прочие операции"
+          var amountStr = transactionMatch[5]; // "1 500,00" or "47 330,86"
           var balanceStr = transactionMatch[6]; // "96 776,18" (not used, but good to have)
           
           // Parse amount
           var amountValue = this._parseAmount_(amountStr);
           
           // Determine transaction type
-          // Income indicators: "+" in category, "зачислен", "пополнение", "возврат", "заработная плата"
+          // Income indicators: "+" in original category (before cleaning), "зачислен", "пополнение", "возврат", "заработная плата"
           var type = 'expense';
           var categoryLower = category.toLowerCase();
+          var originalCategory = improvedMatch ? improvedMatch[4].trim() : category;
           if (amountValue < 0 || 
-              category.indexOf('+') !== -1 || // "+50", "+350" etc. indicates income
+              originalCategory.indexOf('+') !== -1 || // "+47", "+350" etc. indicates income
               categoryLower.indexOf('зачислен') !== -1 || 
               categoryLower.indexOf('пополнение') !== -1 ||
               categoryLower.indexOf('возврат') !== -1) {
@@ -368,6 +428,17 @@ var PF_PDF_SBERBANK_PARSER = {
         descriptionLower.indexOf('зарплата') !== -1 ||
         descriptionLower.indexOf('зачислен') !== -1)) {
       type = 'income';
+    }
+    
+    // For income transactions with "Прочие операции" and "Заработная плата" in description,
+    // set category to "Зарплата" and subcategory to "Основной доход"
+    if (type === 'income' && 
+        rawTransaction.category && 
+        rawTransaction.category.indexOf('Прочие операции') !== -1 &&
+        descriptionLower.indexOf('заработная плата') !== -1) {
+      // Override category for salary transactions
+      // Category will be set in normalize function, but we can prepare description
+      // The category will be set based on description later
     }
     
     // Extract merchant from description (usually first part before "RUS" or "Операция")
