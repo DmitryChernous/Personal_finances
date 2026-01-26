@@ -155,58 +155,74 @@ var PF_PDF_SBERBANK_PARSER = {
         // Also: "28.11.2025 11:45 647377 Прочие операции +47 330,86 141 669,66"
         var transactionMatch = null;
         
-        // First try improved pattern (matches from end)
-        var improvedMatch = line.match(transactionLinePatternImproved);
-        if (improvedMatch) {
-          // Extract balance (last number)
-          var balanceStr = improvedMatch[6].trim(); // "141 669,66"
-          // Extract amount (second to last number)
-          var amountStr = improvedMatch[5].trim(); // "47 330,86" or "330,86"
+        // Parse from the end to correctly identify amount and balance
+        // Strategy: find last two numbers (balance and amount), then extract category
+        var balanceMatch = line.match(/([\d\s]+,\d{2})\s*$/);
+        if (balanceMatch) {
+          var balanceStr = balanceMatch[1].trim();
+          // Remove balance from line to find amount
+          var lineWithoutBalance = line.substring(0, line.lastIndexOf(balanceStr)).trim();
+          var amountMatch = lineWithoutBalance.match(/([\d\s]+,\d{2})\s*$/);
           
-          // Check if amount contains "+number" pattern in the category part
-          // If category ends with "+number", we need to extract it and add to amount
-          var categoryPart = improvedMatch[4].trim(); // "Прочие операции +47" or "Перевод СБП"
-          
-          // Check if category ends with "+number" pattern (e.g., "+47", "+350")
-          var plusNumberMatch = categoryPart.match(/\+\s*(\d+)\s*$/);
-          if (plusNumberMatch) {
-            // Extract the number after "+"
-            var plusNumber = parseInt(plusNumberMatch[1], 10);
-            // Remove "+number" from category
-            categoryPart = categoryPart.replace(/\+\s*\d+\s*$/, '').trim();
-            // Combine with amount: if amount is "330,86" and plusNumber is 47, result is "47 330,86"
-            // Parse current amount to get decimal part
-            var currentAmount = this._parseAmount_(amountStr);
-            // If current amount is less than 1000, it's likely just the decimal part
-            // Combine: plusNumber * 1000 + currentAmount
-            if (currentAmount < 1000 && plusNumber > 0) {
-              var combinedAmount = plusNumber * 1000 + currentAmount;
-              // Format back to Russian format: "47 330,86"
-              var intPart = Math.floor(combinedAmount);
-              var decPart = Math.round((combinedAmount - intPart) * 100);
-              // Format integer part with spaces every 3 digits from right
-              var intStr = intPart.toString();
-              var formattedInt = '';
-              for (var i = intStr.length - 1, j = 0; i >= 0; i--, j++) {
-                if (j > 0 && j % 3 === 0) {
-                  formattedInt = ' ' + formattedInt;
+          if (amountMatch) {
+            var amountStr = amountMatch[1].trim();
+            // Remove amount from line to find category
+            var lineWithoutAmount = lineWithoutBalance.substring(0, lineWithoutBalance.lastIndexOf(amountStr)).trim();
+            
+            // Now extract date, time, code, and category from the beginning
+            var headerMatch = lineWithoutAmount.match(/^(\d{2}\.\d{2}\.\d{4})\s+(\d{2}:\d{2})\s+(\d{6})\s+(.+)$/);
+            
+            if (headerMatch) {
+              var dateStr = headerMatch[1];
+              var timeStr = headerMatch[2];
+              var authCode = headerMatch[3];
+              var categoryPart = headerMatch[4].trim();
+              
+              // Check if category ends with "+number" pattern (e.g., "+47", "+350")
+              // This indicates income and the number should be combined with amount
+              var plusNumberMatch = categoryPart.match(/\+\s*(\d+)\s*$/);
+              if (plusNumberMatch) {
+                // Extract the number after "+"
+                var plusNumber = parseInt(plusNumberMatch[1], 10);
+                // Remove "+number" from category
+                categoryPart = categoryPart.replace(/\+\s*\d+\s*$/, '').trim();
+                // Combine with amount: if amount is "330,86" and plusNumber is 47, result is "47 330,86"
+                // Parse current amount to get decimal part
+                var currentAmount = this._parseAmount_(amountStr);
+                // If current amount is less than 1000, it's likely just the decimal part
+                // Combine: plusNumber * 1000 + currentAmount
+                if (currentAmount < 1000 && plusNumber > 0) {
+                  var combinedAmount = plusNumber * 1000 + currentAmount;
+                  // Format back to Russian format: "47 330,86"
+                  var intPart = Math.floor(combinedAmount);
+                  var decPart = Math.round((combinedAmount - intPart) * 100);
+                  // Format integer part with spaces every 3 digits from right
+                  var intStr = intPart.toString();
+                  var formattedInt = '';
+                  for (var k = intStr.length - 1, j = 0; k >= 0; k--, j++) {
+                    if (j > 0 && j % 3 === 0) {
+                      formattedInt = ' ' + formattedInt;
+                    }
+                    formattedInt = intStr[k] + formattedInt;
+                  }
+                  amountStr = formattedInt + ',' + (decPart < 10 ? '0' : '') + decPart;
                 }
-                formattedInt = intStr[i] + formattedInt;
               }
-              amountStr = formattedInt + ',' + (decPart < 10 ? '0' : '') + decPart;
+              
+              transactionMatch = {
+                1: dateStr,
+                2: timeStr,
+                3: authCode,
+                4: categoryPart,
+                5: amountStr,
+                6: balanceStr
+              };
             }
           }
-          
-          transactionMatch = {
-            1: improvedMatch[1], // date
-            2: improvedMatch[2], // time
-            3: improvedMatch[3], // authCode
-            4: categoryPart,     // category (cleaned)
-            5: amountStr,        // amount (corrected)
-            6: balanceStr        // balance
-          };
-        } else {
-          // Fallback to original pattern
+        }
+        
+        // Fallback to original pattern if new approach didn't work
+        if (!transactionMatch) {
           transactionMatch = line.match(transactionLinePattern);
         }
         
