@@ -118,8 +118,18 @@ var PF_PDF_SBERBANK_PARSER = {
       
       var currentTransaction = null;
       
+      // DEBUG: Log first 150 lines for debugging
+      var debugLineCount = 0;
+      var maxDebugLines = 150;
+      
       for (var i = startRow; i < endRow; i++) {
         var line = lines[i].trim();
+        
+        // DEBUG: Log first lines
+        if (debugLineCount < maxDebugLines) {
+          Logger.log('[DEBUG] Line ' + (i + 1) + ': ' + line);
+          debugLineCount++;
+        }
         
         // Stop at footer markers
         if (line.indexOf('Для проверки подлинности') !== -1 ||
