@@ -180,16 +180,20 @@ var PF_PDF_SBERBANK_PARSER = {
             // If current amount is less than 1000, it's likely just the decimal part
             // Combine: plusNumber * 1000 + currentAmount
             if (currentAmount < 1000 && plusNumber > 0) {
-              amountStr = (plusNumber * 1000 + currentAmount).toString().replace('.', ',');
-              // Format with spaces for thousands: "47 330,86"
-              if (plusNumber >= 1) {
-                var parts = amountStr.split(',');
-                var intPart = parts[0];
-                var decPart = parts[1] || '00';
-                // Add space every 3 digits from right
-                var formattedInt = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
-                amountStr = formattedInt + ',' + decPart;
+              var combinedAmount = plusNumber * 1000 + currentAmount;
+              // Format back to Russian format: "47 330,86"
+              var intPart = Math.floor(combinedAmount);
+              var decPart = Math.round((combinedAmount - intPart) * 100);
+              // Format integer part with spaces every 3 digits from right
+              var intStr = intPart.toString();
+              var formattedInt = '';
+              for (var i = intStr.length - 1, j = 0; i >= 0; i--, j++) {
+                if (j > 0 && j % 3 === 0) {
+                  formattedInt = ' ' + formattedInt;
+                }
+                formattedInt = intStr[i] + formattedInt;
               }
+              amountStr = formattedInt + ',' + (decPart < 10 ? '0' : '') + decPart;
             }
           }
           
@@ -430,15 +434,34 @@ var PF_PDF_SBERBANK_PARSER = {
       type = 'income';
     }
     
-    // For income transactions with "Прочие операции" and "Заработная плата" in description,
-    // set category to "Зарплата" and subcategory to "Основной доход"
+    // For income transactions, build proper description
+    // If we have "Прочие операции" in category and "Заработная плата" in description
     if (type === 'income' && 
         rawTransaction.category && 
-        rawTransaction.category.indexOf('Прочие операции') !== -1 &&
-        descriptionLower.indexOf('заработная плата') !== -1) {
-      // Override category for salary transactions
-      // Category will be set in normalize function, but we can prepare description
-      // The category will be set based on description later
+        rawTransaction.category.indexOf('Прочие операции') !== -1) {
+      // Build description: "Прочие операции. Заработная плата. Операция по карте ****7426"
+      var descParts = [];
+      if (rawTransaction.category) {
+        descParts.push(rawTransaction.category);
+      }
+      if (description && description.indexOf('Заработная плата') !== -1) {
+        descParts.push('Заработная плата');
+      }
+      // Add card operation info if present
+      if (description && description.indexOf('Операция по карте') !== -1) {
+        var cardMatch = description.match(/Операция по карте[^*]*\*\*\*\*\d+/);
+        if (cardMatch) {
+          descParts.push(cardMatch[0]);
+        }
+      } else if (description && description.indexOf('по карте') !== -1) {
+        var cardMatch2 = description.match(/по карте[^*]*\*\*\*\*\d+/);
+        if (cardMatch2) {
+          descParts.push('Операция ' + cardMatch2[0]);
+        }
+      }
+      if (descParts.length > 0) {
+        description = descParts.join('. ');
+      }
     }
     
     // Extract merchant from description (usually first part before "RUS" or "Операция")
