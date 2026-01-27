@@ -226,14 +226,16 @@ var PF_PDF_SBERBANK_PARSER = {
               
               // Filter: if we have a match starting with "+" that's followed by another match,
               // and the second match starts right after the first (no gap), combine them
+              // Only combine if first match is incomplete (like "+46" without comma) and next is right after
               var amountMatches = [];
               for (var m = 0; m < allMatches.length; m++) {
                 var current = allMatches[m];
-                // Check if this is a partial match (starts with "+" but next match is right after)
-                if (current.value.startsWith('+') && m + 1 < allMatches.length) {
+                // Check if this looks like a partial match: starts with "+" but doesn't have a comma yet
+                // AND next match is very close (0-2 chars gap) AND next doesn't start with "+"
+                if (current.value.startsWith('+') && current.value.indexOf(',') === -1 && m + 1 < allMatches.length) {
                   var next = allMatches[m + 1];
                   var gap = next.index - (current.index + current.fullMatch.length);
-                  // If gap is small (0-2 chars, likely just a space), combine
+                  // Only combine if gap is very small (0-2 chars, likely just a space) and next doesn't start with "+"
                   if (gap >= 0 && gap <= 2 && !next.value.startsWith('+')) {
                     // Combine: "+46" + " 696,61" = "+46 696,61"
                     amountMatches.push({
