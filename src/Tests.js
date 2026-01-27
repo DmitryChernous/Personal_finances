@@ -397,3 +397,144 @@ function testInputValidation() {
     errors: errors
   };
 }
+
+/**
+ * Test PDF Sberbank parser with real examples
+ */
+function testPdfSberbankParser() {
+  var errors = [];
+  
+  try {
+    // Test cases from user examples
+    var testCases = [
+      {
+        input: '29.10.2025 18:36 574763 Супермаркеты 204,98 97 005,99 29.10.2025 PYATEROCHKA 20477 Shakhty RUS. Операция по',
+        nextLine: 'карте ****7426',
+        expected: {
+          date: '29.10.2025',
+          time: '18:36',
+          authCode: '574763',
+          category: 'Супермаркеты',
+          amount: '204,98',
+          balance: '97 005,99',
+          processingDate: '29.10.2025',
+          description: 'PYATEROCHKA 20477 Shakhty RUS. Операция по карте ****7426'
+        }
+      },
+      {
+        input: '29.10.2025 18:26 571125 Супермаркеты 229,44 97 210,97 29.10.2025 CH61039 Shakhty RUS. Операция по карте ****7426',
+        nextLine: null,
+        expected: {
+          date: '29.10.2025',
+          time: '18:26',
+          authCode: '571125',
+          category: 'Супермаркеты',
+          amount: '229,44',
+          balance: '97 210,97',
+          processingDate: '29.10.2025',
+          description: 'CH61039 Shakhty RUS. Операция по карте ****7426'
+        }
+      },
+      {
+        input: '29.10.2025 10:16 938498 Прочие операции +46 696,61 97 440,41 29.10.2025 Заработная плата. Операция по карте ****7426',
+        nextLine: null,
+        expected: {
+          date: '29.10.2025',
+          time: '10:16',
+          authCode: '938498',
+          category: 'Прочие операции',
+          amount: '+46 696,61',
+          balance: '97 440,41',
+          processingDate: '29.10.2025',
+          description: 'Заработная плата. Операция по карте ****7426'
+        }
+      },
+      {
+        input: '27.10.2025 19:34 201171 Супермаркеты 449,44 50 743,80 27.10.2025 PYATEROCHKA 20477 Shakhty RUS. Операция по',
+        nextLine: 'карте ****7426',
+        expected: {
+          date: '27.10.2025',
+          time: '19:34',
+          authCode: '201171',
+          category: 'Супермаркеты',
+          amount: '449,44',
+          balance: '50 743,80',
+          processingDate: '27.10.2025',
+          description: 'PYATEROCHKA 20477 Shakhty RUS. Операция по карте ****7426'
+        }
+      },
+      {
+        input: '27.10.2025 19:24 401568 Супермаркеты 1 606,00 51 193,24 27.10.2025 CH61039 Shakhty RUS. Операция по карте ****7426',
+        nextLine: null,
+        expected: {
+          date: '27.10.2025',
+          time: '19:24',
+          authCode: '401568',
+          category: 'Супермаркеты',
+          amount: '1 606,00',
+          balance: '51 193,24',
+          processingDate: '27.10.2025',
+          description: 'CH61039 Shakhty RUS. Операция по карте ****7426'
+        }
+      }
+    ];
+    
+    // Test parser
+    for (var i = 0; i < testCases.length; i++) {
+      var testCase = testCases[i];
+      var lines = [testCase.input];
+      if (testCase.nextLine) {
+        lines.push(testCase.nextLine);
+      }
+      
+      // Simulate parsing
+      var text = lines.join('\n');
+      var parsed = PF_PDF_SBERBANK_PARSER.parse(text, {});
+      
+      if (!parsed || parsed.length === 0) {
+        errors.push('Test case ' + (i + 1) + ': No transactions parsed');
+        continue;
+      }
+      
+      var transaction = parsed[0];
+      var expected = testCase.expected;
+      
+      // Check each field
+      if (transaction.date !== expected.date) {
+        errors.push('Test case ' + (i + 1) + ': date mismatch. Expected: "' + expected.date + '", got: "' + transaction.date + '"');
+      }
+      if (transaction.time !== expected.time) {
+        errors.push('Test case ' + (i + 1) + ': time mismatch. Expected: "' + expected.time + '", got: "' + transaction.time + '"');
+      }
+      if (transaction.authCode !== expected.authCode) {
+        errors.push('Test case ' + (i + 1) + ': authCode mismatch. Expected: "' + expected.authCode + '", got: "' + transaction.authCode + '"');
+      }
+      if (transaction.category !== expected.category) {
+        errors.push('Test case ' + (i + 1) + ': category mismatch. Expected: "' + expected.category + '", got: "' + transaction.category + '"');
+      }
+      if (transaction.amount !== expected.amount) {
+        errors.push('Test case ' + (i + 1) + ': amount mismatch. Expected: "' + expected.amount + '", got: "' + transaction.amount + '"');
+      }
+      
+      // Check description (may be in description array)
+      var description = Array.isArray(transaction.description) 
+        ? transaction.description.join(' ') 
+        : (transaction.description || '');
+      if (description.indexOf(expected.description) === -1 && expected.description.indexOf(description) === -1) {
+        errors.push('Test case ' + (i + 1) + ': description mismatch. Expected to contain: "' + expected.description + '", got: "' + description + '"');
+      }
+    }
+    
+  } catch (e) {
+    errors.push('Exception in testPdfSberbankParser: ' + e.toString());
+    Logger.log('Test exception: ' + e.toString());
+    Logger.log('Stack: ' + (e.stack || 'No stack'));
+  }
+  
+  return {
+    name: 'PDF Sberbank Parser',
+    passed: errors.length === 0,
+    count: testCases ? testCases.length : 0,
+    errors: errors
+  };
+}

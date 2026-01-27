@@ -196,8 +196,8 @@ var PF_PDF_SBERBANK_PARSER = {
               authCode = authCodeMatch[1]; // "647377"
               
               // Rule 5: Extract category - between auth code and amount
-              // Category: letters (cyrillic/latin) + special chars, no digits (except +number at end)
-              // Amount: starts with digit, contains spaces, ends with ,XX
+              // Category: letters (cyrillic/latin) + special chars, no digits
+              // Amount: starts with digit or "+", contains spaces, ends with ,XX
               var afterAuthCode = afterTime.substring(6).trim();
               
               // Find amount pattern: starts with digit or "+", ends with ,XX
@@ -217,26 +217,31 @@ var PF_PDF_SBERBANK_PARSER = {
               
               // We expect two amounts: transaction amount and balance
               if (amountMatches.length >= 2) {
-                amountStr = amountMatches[0].value.trim(); // First amount
+                amountStr = amountMatches[0].value.trim(); // First amount (may start with "+")
                 balanceStr = amountMatches[1].value.trim(); // Second amount (balance)
                 
                 // Category is everything between auth code and first amount
                 var categoryEndIndex = amountMatches[0].index;
                 categoryPart = afterAuthCode.substring(0, categoryEndIndex).trim();
                 
-                // Rule 6: Check if category ends with "+number" pattern
-                // This indicates income and number should be combined with amount
+                // IMPORTANT: If amount starts with "+", it's already a complete amount
+                // Don't try to combine "+number" from category with amount
+                // Example: "Прочие операции +46 696,61" -> category: "Прочие операции", amount: "+46 696,61"
+                // The "+46" is part of the amount, not category!
+                
+                // Check if category ends with "+number" pattern (old format, e.g., "+47" separate from amount)
+                // This was the old format where "+47" was in category and amount was "330,86"
+                // New format: amount is already "+46 696,61" (complete)
                 var plusNumberMatch = categoryPart.match(/\+\s*(\d+)\s*$/);
-                if (plusNumberMatch) {
+                if (plusNumberMatch && !amountStr.startsWith('+')) {
+                  // Old format: category has "+number", amount doesn't start with "+"
+                  // Combine them: "+47" + "330,86" = "47 330,86"
                   hasPlusInCategory = true;
                   var plusNumber = parseInt(plusNumberMatch[1], 10);
-                  // Remove "+number" from category
                   categoryPart = categoryPart.replace(/\+\s*\d+\s*$/, '').trim();
-                  // Combine with amount: "+47" + "330,86" = "47 330,86"
                   var currentAmount = this._parseAmount_(amountStr);
                   if (currentAmount < 1000 && plusNumber > 0) {
                     var combinedAmount = plusNumber * 1000 + currentAmount;
-                    // Format back to Russian format: "47 330,86"
                     var intPart = Math.floor(combinedAmount);
                     var decPart = Math.round((combinedAmount - intPart) * 100);
                     var intStr = intPart.toString();
@@ -249,6 +254,24 @@ var PF_PDF_SBERBANK_PARSER = {
                     }
                     amountStr = formattedInt + ',' + (decPart < 10 ? '0' : '') + decPart;
                   }
+                } else if (amountStr.startsWith('+')) {
+                  // New format: amount already has "+", mark as income
+                  hasPlusInCategory = true;
+                }
+                
+                // Extract processing date and description after balance
+                var afterBalance = afterAuthCode.substring(amountMatches[1].index + amountMatches[1].value.length).trim();
+                var processingDate = '';
+                var descriptionStart = '';
+                
+                // Check if there's a date after balance (processing date)
+                var processingDateMatch = afterBalance.match(/^(\d{2}\.\d{2}\.\d{4})\s+(.+)$/);
+                if (processingDateMatch) {
+                  processingDate = processingDateMatch[1];
+                  descriptionStart = processingDateMatch[2].trim();
+                } else {
+                  // No processing date, description starts immediately after balance
+                  descriptionStart = afterBalance;
                 }
                 
                 transactionMatch = {
@@ -257,7 +280,9 @@ var PF_PDF_SBERBANK_PARSER = {
                   3: authCode,
                   4: categoryPart,
                   5: amountStr,
-                  6: balanceStr
+                  6: balanceStr,
+                  7: processingDate,
+                  8: descriptionStart
                 };
               }
             }
@@ -310,8 +335,10 @@ var PF_PDF_SBERBANK_PARSER = {
           var timeStr = transactionMatch[2]; // "16:40"
           var authCode = transactionMatch[3]; // "966521"
           var category = transactionMatch[4].trim(); // "Перевод СБП" or "Прочие операции"
-          var amountStr = transactionMatch[5]; // "1 500,00" or "47 330,86"
+          var amountStr = transactionMatch[5]; // "1 500,00" or "+46 696,61"
           var balanceStr = transactionMatch[6]; // "96 776,18" (not used, but good to have)
+          var processingDate = transactionMatch[7] || ''; // "29.10.2025" (optional)
+          var descriptionStart = transactionMatch[8] || ''; // Start of description from same line
           
           // Parse amount
           var amountValue = this._parseAmount_(amountStr);
@@ -338,7 +365,8 @@ var PF_PDF_SBERBANK_PARSER = {
             category: category,
             amount: amountValue,
             type: type,
-            description: [], // Will collect multi-line description
+            description: descriptionStart ? [descriptionStart] : [], // Start with description from same line
+            processingDate: processingDate,
             rawLine: line
           };
         } else {
