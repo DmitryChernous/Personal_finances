@@ -202,18 +202,48 @@ var PF_PDF_SBERBANK_PARSER = {
               
               // Find amount pattern: starts with digit or "+", ends with ,XX
               // Pattern: optional "+" followed by digits/spaces, then comma and two digits
-              // Important: "+46 696,61" should be matched as one amount, not "+46" and "696,61"
-              // Use non-greedy matching from the end to find complete amounts
-              var amountPattern = /(\+?[\d\s]+,\d{2})/g;
-              var amountMatches = [];
-              var match;
+              // Important: "+46 696,61" should be matched as one amount
+              // Strategy: find all amounts from the end, working backwards
+              // This ensures we get complete amounts like "+46 696,61" not partial "+46"
               
-              // Find all matches
+              // First, find all potential amounts (numbers ending with ,XX)
+              var amountPattern = /(\+?[\d\s]+,\d{2})/g;
+              var allMatches = [];
+              var match;
+              var lastIndex = 0;
+              
+              // Reset regex lastIndex to avoid issues
+              amountPattern.lastIndex = 0;
               while ((match = amountPattern.exec(afterAuthCode)) !== null) {
-                amountMatches.push({
+                allMatches.push({
                   value: match[1],
-                  index: match.index
+                  index: match.index,
+                  fullMatch: match[0]
                 });
+                lastIndex = match.index + match[0].length;
+              }
+              
+              // Filter: if we have a match starting with "+" that's followed by another match,
+              // and the second match starts right after the first (no gap), combine them
+              var amountMatches = [];
+              for (var m = 0; m < allMatches.length; m++) {
+                var current = allMatches[m];
+                // Check if this is a partial match (starts with "+" but next match is right after)
+                if (current.value.startsWith('+') && m + 1 < allMatches.length) {
+                  var next = allMatches[m + 1];
+                  var gap = next.index - (current.index + current.fullMatch.length);
+                  // If gap is small (0-2 chars, likely just a space), combine
+                  if (gap >= 0 && gap <= 2 && !next.value.startsWith('+')) {
+                    // Combine: "+46" + " 696,61" = "+46 696,61"
+                    amountMatches.push({
+                      value: current.value + afterAuthCode.substring(current.index + current.fullMatch.length, next.index) + next.value,
+                      index: current.index
+                    });
+                    m++; // Skip next match as it's been combined
+                    continue;
+                  }
+                }
+                amountMatches.push(current);
               }
               
               // Sort by index to process in order
