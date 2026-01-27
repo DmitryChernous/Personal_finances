@@ -13,7 +13,8 @@
     "push:force": "clasp push -f",
     "pull": "clasp pull",
     "open": "clasp open-container",
-    "logs": "clasp logs"
+    "logs": "clasp logs",
+    "test:pdf": "node test/pdf-parser.test.js"
   },
   "repository": {
     "type": "git",

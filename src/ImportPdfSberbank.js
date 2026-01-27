@@ -188,8 +188,9 @@ var PF_PDF_SBERBANK_PARSER = {
             timeStr = timeMatch[1]; // "11:45"
             
             // Rule 4: Extract authorization code - next 6 digits after time
-            // Skip date (10) + space + time (5) + space = ~17 chars from start
-            var afterTime = line.substring(10 + timeStr.length).trim();
+            // Date is 10 chars, then space, then time is 5 chars, then space, then 6 digits
+            var afterDateAndTime = line.substring(10).trim(); // Skip date (10 chars)
+            var afterTime = afterDateAndTime.substring(timeStr.length).trim(); // Skip time (5 chars)
             var authCodeMatch = afterTime.match(/^(\d{6})/);
             
             if (authCodeMatch) {
