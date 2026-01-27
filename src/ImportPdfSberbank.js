@@ -200,8 +200,9 @@ var PF_PDF_SBERBANK_PARSER = {
               // Amount: starts with digit, contains spaces, ends with ,XX
               var afterAuthCode = afterTime.substring(6).trim();
               
-              // Find amount pattern: starts with digit, ends with ,XX
-              var amountPattern = /([\d\s]+,\d{2})/;
+              // Find amount pattern: starts with digit or "+", ends with ,XX
+              // Pattern: optional "+" followed by digits/spaces, then comma and two digits
+              var amountPattern = /(\+?[\d\s]+,\d{2})/;
               var amountMatches = [];
               var searchPos = 0;
               while (searchPos < afterAuthCode.length) {
