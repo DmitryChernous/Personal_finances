@@ -202,18 +202,24 @@ var PF_PDF_SBERBANK_PARSER = {
               
               // Find amount pattern: starts with digit or "+", ends with ,XX
               // Pattern: optional "+" followed by digits/spaces, then comma and two digits
-              var amountPattern = /(\+?[\d\s]+,\d{2})/;
+              // Important: "+46 696,61" should be matched as one amount, not "+46" and "696,61"
+              // Use non-greedy matching from the end to find complete amounts
+              var amountPattern = /(\+?[\d\s]+,\d{2})/g;
               var amountMatches = [];
-              var searchPos = 0;
-              while (searchPos < afterAuthCode.length) {
-                var match = afterAuthCode.substring(searchPos).match(amountPattern);
-                if (!match) break;
+              var match;
+              
+              // Find all matches
+              while ((match = amountPattern.exec(afterAuthCode)) !== null) {
                 amountMatches.push({
                   value: match[1],
-                  index: searchPos + match.index
+                  index: match.index
                 });
-                searchPos = searchPos + match.index + match[0].length;
               }
+              
+              // Sort by index to process in order
+              amountMatches.sort(function(a, b) {
+                return a.index - b.index;
+              });
               
               // We expect two amounts: transaction amount and balance
               if (amountMatches.length >= 2) {
