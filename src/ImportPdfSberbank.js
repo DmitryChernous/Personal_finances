@@ -160,101 +160,115 @@ var PF_PDF_SBERBANK_PARSER = {
           continue;
         }
         
-        // Try to match full transaction line pattern
-        // Format: "31.12.2025 16:40 966521 Перевод СБП 1 500,00 96 776,18"
-        // Also: "28.11.2025 11:45 647377 Прочие операции +47 330,86 141 669,66"
+        // Parse transaction line using strict rules
+        // Rule 1: New transaction starts with date dd.mm.yyyy
+        var datePattern = /^(\d{2}\.\d{2}\.\d{4})/;
+        var dateMatch = line.match(datePattern);
+        
         var transactionMatch = null;
-        var hasPlusInCategory = false; // Track if category had "+number" pattern
+        var hasPlusInCategory = false;
         
-        // DEBUG: Log lines that might contain the problematic pattern
-        if (line.indexOf('647377') !== -1 || (line.indexOf('Прочие операции') !== -1 && line.indexOf('+') !== -1)) {
-          Logger.log('[DEBUG] Processing line: ' + line);
-        }
-        
-        // Parse from the end to correctly identify amount and balance
-        // Strategy: find last two numbers (balance and amount), then extract category
-        var balanceMatch = line.match(/([\d\s]+,\d{2})\s*$/);
-        if (balanceMatch) {
-          var balanceStr = balanceMatch[1].trim();
-          // Remove balance from line to find amount
-          var balanceIndex = line.lastIndexOf(balanceStr);
-          if (balanceIndex === -1) {
-            // Fallback: try to find balance differently
-            balanceIndex = line.length - balanceStr.length;
-          }
-          var lineWithoutBalance = line.substring(0, balanceIndex).trim();
-          var amountMatch = lineWithoutBalance.match(/([\d\s]+,\d{2})\s*$/);
+        if (dateMatch) {
+          // This is a new transaction line
+          var dateStr = dateMatch[1]; // "28.11.2025"
           
-          if (amountMatch) {
-            var amountStr = amountMatch[1].trim();
-            // Remove amount from line to find category
-            var amountIndex = lineWithoutBalance.lastIndexOf(amountStr);
-            if (amountIndex === -1) {
-              // Fallback: try to find amount differently
-              amountIndex = lineWithoutBalance.length - amountStr.length;
-            }
-            var lineWithoutAmount = lineWithoutBalance.substring(0, amountIndex).trim();
+          // Rule 2: Extract date (first 10 characters or until first space)
+          // Already have it from regex
+          
+          // Rule 3: Extract time - next 5 characters after date (format HH:MM)
+          // Skip date (10 chars) and space, then take 5 chars
+          var timeMatch = line.substring(10).trim().match(/^(\d{2}:\d{2})/);
+          var timeStr = '';
+          var authCode = '';
+          var categoryPart = '';
+          var amountStr = '';
+          var balanceStr = '';
+          
+          if (timeMatch) {
+            timeStr = timeMatch[1]; // "11:45"
             
-            // Now extract date, time, code, and category from the beginning
-            var headerMatch = lineWithoutAmount.match(/^(\d{2}\.\d{2}\.\d{4})\s+(\d{2}:\d{2})\s+(\d{6})\s+(.+)$/);
+            // Rule 4: Extract authorization code - next 6 digits after time
+            // Skip date (10) + space + time (5) + space = ~17 chars from start
+            var afterTime = line.substring(10 + timeStr.length).trim();
+            var authCodeMatch = afterTime.match(/^(\d{6})/);
             
-            if (headerMatch) {
-              var dateStr = headerMatch[1];
-              var timeStr = headerMatch[2];
-              var authCode = headerMatch[3];
-              var categoryPart = headerMatch[4].trim();
+            if (authCodeMatch) {
+              authCode = authCodeMatch[1]; // "647377"
               
-              // Check if category ends with "+number" pattern (e.g., "+47", "+350")
-              // This indicates income and the number should be combined with amount
-              var plusNumberMatch = categoryPart.match(/\+\s*(\d+)\s*$/);
-              if (plusNumberMatch) {
-                hasPlusInCategory = true; // Mark that we found "+number" pattern
-                // Extract the number after "+"
-                var plusNumber = parseInt(plusNumberMatch[1], 10);
-                // Remove "+number" from category
-                categoryPart = categoryPart.replace(/\+\s*\d+\s*$/, '').trim();
-                // Combine with amount: if amount is "330,86" and plusNumber is 47, result is "47 330,86"
-                // Parse current amount to get decimal part
-                var currentAmount = this._parseAmount_(amountStr);
-                // If current amount is less than 1000, it's likely just the decimal part
-                // Combine: plusNumber * 1000 + currentAmount
-                if (currentAmount < 1000 && plusNumber > 0) {
-                  var combinedAmount = plusNumber * 1000 + currentAmount;
-                  // Format back to Russian format: "47 330,86"
-                  var intPart = Math.floor(combinedAmount);
-                  var decPart = Math.round((combinedAmount - intPart) * 100);
-                  // Format integer part with spaces every 3 digits from right
-                  var intStr = intPart.toString();
-                  var formattedInt = '';
-                  for (var k = intStr.length - 1, j = 0; k >= 0; k--, j++) {
-                    if (j > 0 && j % 3 === 0) {
-                      formattedInt = ' ' + formattedInt;
-                    }
-                    formattedInt = intStr[k] + formattedInt;
-                  }
-                  amountStr = formattedInt + ',' + (decPart < 10 ? '0' : '') + decPart;
-                }
+              // Rule 5: Extract category - between auth code and amount
+              // Category: letters (cyrillic/latin) + special chars, no digits (except +number at end)
+              // Amount: starts with digit, contains spaces, ends with ,XX
+              var afterAuthCode = afterTime.substring(6).trim();
+              
+              // Find amount pattern: starts with digit, ends with ,XX
+              var amountPattern = /([\d\s]+,\d{2})/;
+              var amountMatches = [];
+              var searchPos = 0;
+              while (searchPos < afterAuthCode.length) {
+                var match = afterAuthCode.substring(searchPos).match(amountPattern);
+                if (!match) break;
+                amountMatches.push({
+                  value: match[1],
+                  index: searchPos + match.index
+                });
+                searchPos = searchPos + match.index + match[0].length;
               }
               
-              transactionMatch = {
-                1: dateStr,
-                2: timeStr,
-                3: authCode,
-                4: categoryPart,
-                5: amountStr,
-                6: balanceStr
-              };
+              // We expect two amounts: transaction amount and balance
+              if (amountMatches.length >= 2) {
+                amountStr = amountMatches[0].value.trim(); // First amount
+                balanceStr = amountMatches[1].value.trim(); // Second amount (balance)
+                
+                // Category is everything between auth code and first amount
+                var categoryEndIndex = amountMatches[0].index;
+                categoryPart = afterAuthCode.substring(0, categoryEndIndex).trim();
+                
+                // Rule 6: Check if category ends with "+number" pattern
+                // This indicates income and number should be combined with amount
+                var plusNumberMatch = categoryPart.match(/\+\s*(\d+)\s*$/);
+                if (plusNumberMatch) {
+                  hasPlusInCategory = true;
+                  var plusNumber = parseInt(plusNumberMatch[1], 10);
+                  // Remove "+number" from category
+                  categoryPart = categoryPart.replace(/\+\s*\d+\s*$/, '').trim();
+                  // Combine with amount: "+47" + "330,86" = "47 330,86"
+                  var currentAmount = this._parseAmount_(amountStr);
+                  if (currentAmount < 1000 && plusNumber > 0) {
+                    var combinedAmount = plusNumber * 1000 + currentAmount;
+                    // Format back to Russian format: "47 330,86"
+                    var intPart = Math.floor(combinedAmount);
+                    var decPart = Math.round((combinedAmount - intPart) * 100);
+                    var intStr = intPart.toString();
+                    var formattedInt = '';
+                    for (var k = intStr.length - 1, j = 0; k >= 0; k--, j++) {
+                      if (j > 0 && j % 3 === 0) {
+                        formattedInt = ' ' + formattedInt;
+                      }
+                      formattedInt = intStr[k] + formattedInt;
+                    }
+                    amountStr = formattedInt + ',' + (decPart < 10 ? '0' : '') + decPart;
+                  }
+                }
+                
+                transactionMatch = {
+                  1: dateStr,
+                  2: timeStr,
+                  3: authCode,
+                  4: categoryPart,
+                  5: amountStr,
+                  6: balanceStr
+                };
+              }
             }
           }
         }
         
-        // Fallback to original pattern if new approach didn't work
+        // Fallback to original pattern if new strict approach didn't work
         if (!transactionMatch) {
           transactionMatch = line.match(transactionLinePattern);
-          // Check if original pattern matched and has "+" in category
           if (transactionMatch && transactionMatch[4]) {
             hasPlusInCategory = transactionMatch[4].indexOf('+') !== -1;
-            // If we have "+number" in category, try to fix it
+            // Handle "+number" in fallback too
             if (hasPlusInCategory) {
               var originalCategory = transactionMatch[4].trim();
               var originalAmount = transactionMatch[5].trim();
@@ -276,7 +290,6 @@ var PF_PDF_SBERBANK_PARSER = {
                     formattedInt2 = intStr2[k2] + formattedInt2;
                   }
                   var correctedAmount = formattedInt2 + ',' + (decPart2 < 10 ? '0' : '') + decPart2;
-                  // Update transactionMatch with corrected values
                   transactionMatch[4] = cleanedCategory;
                   transactionMatch[5] = correctedAmount;
                 }
