@@ -111,6 +111,12 @@ function pfDetectBankFromPdfText_(text) {
       normalizedText.indexOf('тинькофф банк') !== -1) {
     return 'tinkoff';
   }
+
+  // Check for Yandex markers
+  if (normalizedText.indexOf('яндекс') !== -1 ||
+      normalizedText.indexOf('yandex') !== -1) {
+    return 'yandex';
+  }
   
   // Add more banks as needed
   
@@ -196,6 +202,8 @@ var PF_PDF_IMPORTER = {
       parser = PF_PDF_SBERBANK_PARSER;
     } else if (bank === 'tinkoff' && typeof PF_PDF_TINKOFF_PARSER !== 'undefined') {
       parser = PF_PDF_TINKOFF_PARSER;
+    } else if (bank === 'yandex' && typeof PF_PDF_YANDEX_PARSER !== 'undefined') {
+      parser = PF_PDF_YANDEX_PARSER;
     } else {
       throw new Error('Parser for bank "' + bank + '" is not available. Please ensure the parser module is loaded.');
     }
@@ -229,6 +237,8 @@ var PF_PDF_IMPORTER = {
       parser = PF_PDF_SBERBANK_PARSER;
     } else if (bank === 'tinkoff' && typeof PF_PDF_TINKOFF_PARSER !== 'undefined') {
       parser = PF_PDF_TINKOFF_PARSER;
+    } else if (bank === 'yandex' && typeof PF_PDF_YANDEX_PARSER !== 'undefined') {
+      parser = PF_PDF_YANDEX_PARSER;
     } else {
       throw new Error('Normalizer for bank "' + bank + '" is not available');
     }
