@@ -97,6 +97,14 @@ function pfDetectBankFromPdfText_(text) {
   
   var normalizedText = text.toLowerCase();
   
+  // Check for Yandex markers FIRST (чтобы Яндекс-выписка не определялась как Сбер)
+  if (normalizedText.indexOf('яндекс') !== -1 ||
+      normalizedText.indexOf('yandex') !== -1 ||
+      normalizedText.indexOf('yoo money') !== -1 ||
+      normalizedText.indexOf('yoomoney') !== -1) {
+    return 'yandex';
+  }
+  
   // Check for Sberbank markers
   if (normalizedText.indexOf('сбербанк') !== -1 || 
       normalizedText.indexOf('sberbank') !== -1 ||
@@ -110,12 +118,6 @@ function pfDetectBankFromPdfText_(text) {
       normalizedText.indexOf('tinkoff') !== -1 ||
       normalizedText.indexOf('тинькофф банк') !== -1) {
     return 'tinkoff';
-  }
-
-  // Check for Yandex markers
-  if (normalizedText.indexOf('яндекс') !== -1 ||
-      normalizedText.indexOf('yandex') !== -1) {
-    return 'yandex';
   }
   
   // Add more banks as needed
@@ -185,6 +187,14 @@ var PF_PDF_IMPORTER = {
     
     var text = pfExtractTextFromPdf_(blob, extractOptions);
     
+    // TEMP: логируем первые несколько тысяч символов текста для отладки форматов PDF
+    try {
+      var snippet = text.substring(0, 5000);
+      Logger.log('[PDF-TEXT-SNIPPET-BEGIN]\\n' + snippet + '\\n[PDF-TEXT-SNIPPET-END]');
+    } catch (e) {
+      // ignore logging errors
+    }
+    
     if (!text || text.trim().length === 0) {
       throw new Error('Could not extract text from PDF. File might be empty or corrupted.');
     }
@@ -193,7 +203,7 @@ var PF_PDF_IMPORTER = {
     var bank = pfDetectBankFromPdfText_(text);
     
     if (!bank) {
-      throw new Error('Could not detect bank from PDF content. Supported banks: Sberbank, Tinkoff.');
+      throw new Error('Could not detect bank from PDF content. Supported banks: Sberbank, Tinkoff, Yandex.');
     }
     
     // Delegate to bank-specific parser
