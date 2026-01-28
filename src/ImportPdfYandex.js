@@ -35,13 +35,24 @@ var PF_PDF_YANDEX_PARSER = {
   /**
    * Parse Yandex PDF text into raw transactions.
    *
-   * На первом этапе:
-   *  - логируем фрагмент текста в логи Apps Script;
-   *  - кидаем понятную ошибку, что парсер ещё не реализован.
+   * Формат (по логам):
+   *  - шапка с описанием, затем таблица:
+   *    "Описание операции", "Дата и время операции", "Дата обработки",
+   *    "Карта", "Сумма в валюте операции", "Сумма в валюте Договора/ЭСП".
+   *  - Строки идут парами:
+   *    1) строка с описанием и датой-временем:
+   *       "Оплата СБП QR (YANDEX.TAXI) 02.01.2025 в 20:29"
+   *    2) строка (или часть строки) с датой обработки и суммой(ами):
+   *       "02.01.2025 –245,00 ₽ –245,00 ₽"
+   *    Иногда в одной строке с суммами сразу несколько операций.
    *
-   * После того как мы увидим логи с реальным текстом выписки,
-   * сюда будут добавлены реальные правила парсинга
-   * (аналогично PF_PDF_SBERBANK_PARSER.parse).
+   * Алгоритм:
+   *  - читаем текст построчно;
+   *  - после заголовка "Описание операции" начинаем собирать "ожидающие" операции:
+   *    каждая строка вида "<описание> dd.mm.yyyy в HH:MM" -> кладём в очередь pending;
+   *  - строки с суммами вида:
+   *      "dd.mm.yyyy [*КАРТА] +/–XXX,YY ₽ +/–XXX,YY ₽ [dd.mm.yyyy ...]"
+   *    парсим регуляркой, на каждый матч берём по одному элементу из очереди pending.
    *
    * @param {string} text - Extracted text from PDF
    * @param {Object} [options]
@@ -60,8 +71,108 @@ var PF_PDF_YANDEX_PARSER = {
     Logger.log(snippet);
     Logger.log('[YANDEX-PDF-TEXT] --- END ---');
 
-    throw new Error('Yandex PDF parser is not implemented yet. ' +
-                    'Text snippet has been logged with prefix [YANDEX-PDF-TEXT].');
+    var lines = String(text).split(/\r?\n/);
+    var rawTransactions = [];
+
+    // Флаг, что мы дошли до таблицы с операциями
+    var inOperationsTable = false;
+    // Очередь ожидающих операций (описание + дата/время)
+    var pendingOps = [];
+
+    // Регексы
+    var headerPattern = /описание операции/i;
+    var descWithDateTimePattern = /^(.*?)(\d{2}\.\d{2}\.\d{4})\s+в\s+(\d{2}:\d{2})/i;
+    // Строка с датой обработки, опциональной картой и суммами:
+    //  11.01.2025 *7088 –100,00 ₽ –100,00 ₽
+    //  или без карты:
+    //  05.01.2025 –273,00 ₽ –273,00 ₽
+    var amountsPattern = /(\d{2}\.\d{2}\.\d{4})\s+(?:\*\d{4}\s+)?([+\-–−]?\d[\d\s]*,\d{2})\s*₽\s+([+\-–−]?\d[\d\s]*,\d{2})\s*₽/g;
+
+    for (var i = 0; i < lines.length; i++) {
+      var line = lines[i].trim();
+      if (!line) {
+        continue;
+      }
+
+      // Ищем заголовок таблицы
+      if (!inOperationsTable) {
+        if (headerPattern.test(line)) {
+          inOperationsTable = true;
+        }
+        continue;
+      }
+
+      // Линия описания с датой и временем
+      var descMatch = line.match(descWithDateTimePattern);
+      if (descMatch) {
+        var descText = descMatch[1].trim();
+        var opDate = descMatch[2];
+        var opTime = descMatch[3];
+
+        // Иногда описание может быть пустым, но это редкий случай
+        if (descText) {
+          pendingOps.push({
+            description: descText,
+            opDate: opDate,
+            opTime: opTime
+          });
+        }
+        continue;
+      }
+
+      // Линия с суммами
+      var hasAmountMatch = false;
+      var m;
+      while ((m = amountsPattern.exec(line)) !== null) {
+        hasAmountMatch = true;
+        if (!pendingOps.length) {
+          // Нет соответствующей строки описания — пропускаем
+          continue;
+        }
+
+        var pending = pendingOps.shift();
+        var amountStr = m[2];
+
+        // Нормализуем число: убираем пробелы, меняем запятую на точку, нормализуем минус
+        var normalizedAmountStr = amountStr
+          .replace(/\s+/g, '')
+          .replace(',', '.')
+          .replace(/[–−]/g, '-');
+
+        var amount = parseFloat(normalizedAmountStr);
+        if (isNaN(amount)) {
+          continue;
+        }
+
+        var type = amount >= 0 ? 'income' : 'expense';
+
+        rawTransactions.push({
+          bank: 'yandex',
+          date: pending.opDate,
+          time: pending.opTime,
+          description: [pending.description],
+          amount: amount,
+          currency: 'RUB',
+          type: type,
+          // Для дальнейшего улучшения можно будет выделять категорию из описания
+          category: '',
+          sourceId: pending.opDate.replace(/\D/g, '') + pending.opTime.replace(/\D/g, '')
+        });
+      }
+
+      // Если строка с суммами не содержала ни одного матча, сбрасываем state,
+      // когда доходим до итогов / новых разделов.
+      if (!hasAmountMatch) {
+        if (/исходящий остаток/i.test(line) ||
+            /всего расходных операций/i.test(line) ||
+            /выписка по договору/i.test(line)) {
+          pendingOps = [];
+          inOperationsTable = false; // возможно начинается новая таблица
+        }
+      }
+    }
+
+    return rawTransactions;
   },
 
   /**
