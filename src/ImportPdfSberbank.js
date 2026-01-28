@@ -463,21 +463,19 @@ var PF_PDF_SBERBANK_PARSER = {
               };
             } else if (dateMatch && !amountMatch) {
               // Line with date but no amount - continuation of description
-              // Remove date from beginning if present
+              // Remove date from beginning if present and always append to description
               var descLine = line;
               if (dateMatch.index === 0) {
                 descLine = line.substring(dateMatch[0].length).trim();
               }
-              // Skip lines that are just "по карте ****7426" or similar
-              if (descLine && descLine.length > 0 && 
-                  !descLine.match(/^(по карте|операция по карте|карте)\s*\*\*\*\*\d*$/i)) {
+              if (descLine && descLine.length > 0) {
                 currentTransaction.description.push(descLine);
               }
             } else if (!dateMatch && !amountMatch) {
               // Line without date or amount - continuation of description
-              // Skip lines that are just "по карте ****7426" or similar
-              if (line.length > 0 && 
-                  !line.match(/^(по карте|операция по карте|карте)\s*\*\*\*\*\d*$/i)) {
+              // Always append full line (including "по карте ****7426") so that
+              // description in the final table matches the PDF text exactly.
+              if (line.length > 0) {
                 currentTransaction.description.push(line);
               }
             }
@@ -718,6 +716,8 @@ var PF_PDF_SBERBANK_PARSER = {
                  (merchant || description.substring(0, 10) || 'unknown').replace(/\s/g, '');
     }
     
+    // Use bank category as initial category – it contains useful info
+    // for later user-defined categorization rules (e.g. "Супермаркеты", "Перевод СБП").
     var transaction = {
       date: date,
       type: type,
@@ -725,7 +725,7 @@ var PF_PDF_SBERBANK_PARSER = {
       accountTo: '',
       amount: amount,
       currency: defaultCurrency,
-      category: '',
+      category: rawTransaction.category || '',
       subcategory: '',
       merchant: merchant,
       description: description,
