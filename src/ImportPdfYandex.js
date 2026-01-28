@@ -88,6 +88,9 @@ var PF_PDF_YANDEX_PARSER = {
     //  05.01.2025 –273,00 ₽ –273,00 ₽
     var amountsPattern = /(\d{2}\.\d{2}\.\d{4})\s+(?:\*\d{4}\s+)?([+\-–−]?\d[\d\s]*,\d{2})\s*₽\s+([+\-–−]?\d[\d\s]*,\d{2})\s*₽/g;
 
+    // Буфер для многострочного описания до строки с датой/временем
+    var descBuffer = '';
+
     for (var i = 0; i < lines.length; i++) {
       var line = lines[i].trim();
       if (!line) {
@@ -102,12 +105,21 @@ var PF_PDF_YANDEX_PARSER = {
         continue;
       }
 
-      // Линия описания с датой и временем
+      // Линия описания с датой и временем (описание и дата в одной строке)
       var descMatch = line.match(descWithDateTimePattern);
       if (descMatch) {
         var descText = descMatch[1].trim();
         var opDate = descMatch[2];
         var opTime = descMatch[3];
+
+        // Если до этого накапливался буфер описания (несколько строк),
+        // приклеиваем его перед текущим описанием.
+        if (!descText && descBuffer) {
+          descText = descBuffer.trim();
+        } else if (descBuffer) {
+          descText = (descBuffer + ' ' + descText).trim();
+        }
+        descBuffer = '';
 
         // Иногда описание может быть пустым, но это редкий случай
         if (descText) {
@@ -118,6 +130,41 @@ var PF_PDF_YANDEX_PARSER = {
           });
         }
         continue;
+      }
+
+      // Линия ТОЛЬКО с датой и временем (описание на предыдущих строках)
+      var dateTimeOnlyMatch = line.match(/^(\d{2}\.\d{2}\.\d{4})\s+в\s+(\d{2}:\d{2})/i);
+      if (dateTimeOnlyMatch) {
+        var dtDate = dateTimeOnlyMatch[1];
+        var dtTime = dateTimeOnlyMatch[2];
+
+        if (descBuffer) {
+          var bufferedDesc = descBuffer.trim();
+          if (bufferedDesc) {
+            pendingOps.push({
+              description: bufferedDesc,
+              opDate: dtDate,
+              opTime: dtTime
+            });
+          }
+        }
+        // После использования буфера очищаем его
+        descBuffer = '';
+        continue;
+      }
+
+      // Если это строка продолжения описания (без сумм и без дат),
+      // накапливаем в буфере.
+      if (line.indexOf('₽') === -1 &&
+          !/исходящий остаток/i.test(line) &&
+          !/всего расходных операций/i.test(line) &&
+          !/всего приходных операций/i.test(line) &&
+          !/выписка по договору/i.test(line)) {
+        if (descBuffer) {
+          descBuffer += ' ' + line;
+        } else {
+          descBuffer = line;
+        }
       }
 
       // Линия с суммами
@@ -167,6 +214,7 @@ var PF_PDF_YANDEX_PARSER = {
             /всего расходных операций/i.test(line) ||
             /выписка по договору/i.test(line)) {
           pendingOps = [];
+          descBuffer = '';
           inOperationsTable = false; // возможно начинается новая таблица
         }
       }
