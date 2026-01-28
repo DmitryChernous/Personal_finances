@@ -420,6 +420,8 @@ function pfPreviewImport_(transactions) {
   var rows = [];
   for (var i = 0; i < transactions.length; i++) {
     var tx = transactions[i];
+    // DEBUG: log DTO before converting to row (temporary)
+    // Logger.log('[PREVIEW] TX DTO: ' + JSON.stringify(tx));
     var row = pfTransactionDTOToRow_(tx);
     
     // Add error column
