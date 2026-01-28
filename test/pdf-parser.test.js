@@ -113,6 +113,40 @@ const testCases = [
       processingDate: '27.10.2025',
       description: 'CH61039 Shakhty RUS. Операция по карте ****7426'
     }
+  },
+  {
+    name: 'Transaction 6: 08.10.2025 supermarket with multi-line description',
+    input: [
+      '08.10.2025 13:31 792469 Супермаркеты 1 478,77 30 849,34 08.10.2025 PYATEROCHKA 20477 Shakhty RUS. Операция по',
+      'карте ****7426'
+    ],
+    expected: {
+      date: '08.10.2025',
+      time: '13:31',
+      authCode: '792469',
+      category: 'Супермаркеты',
+      amount: '1 478,77',
+      balance: '30 849,34',
+      processingDate: '08.10.2025',
+      description: 'PYATEROCHKA 20477 Shakhty RUS. Операция по карте ****7426'
+    }
+  },
+  {
+    name: 'Transaction 7: 06.10.2025 SBP transfer with multi-line description',
+    input: [
+      '06.10.2025 21:59 986237 Перевод СБП 500,00 32 328,11 06.10.2025 Перевод для Ч. Дмитрий Вячеславович. Операция',
+      'по карте ****7426'
+    ],
+    expected: {
+      date: '06.10.2025',
+      time: '21:59',
+      authCode: '986237',
+      category: 'Перевод СБП',
+      amount: '500,00',
+      balance: '32 328,11',
+      processingDate: '06.10.2025',
+      description: 'Перевод для Ч. Дмитрий Вячеславович. Операция по карте ****7426'
+    }
   }
 ];
 
