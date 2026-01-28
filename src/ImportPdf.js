@@ -81,7 +81,18 @@ function pfExtractTextFromPdf_(pdfFile, options) {
     
   } catch (e) {
     pfLogError_(e, 'pfExtractTextFromPdf_', PF_LOG_LEVEL.ERROR);
-    throw new Error('Error extracting text from PDF: ' + (e.message || e.toString()));
+    
+    // Check for OCR rate limit error
+    var errorMessage = e.message || e.toString();
+    if (errorMessage.indexOf('rate limit') !== -1 || 
+        errorMessage.indexOf('User rate limit exceeded') !== -1 ||
+        errorMessage.indexOf('quota') !== -1) {
+      throw new Error('Превышен лимит запросов OCR от Google. ' +
+                      'Подождите несколько минут и попробуйте снова. ' +
+                      'Ошибка: ' + errorMessage);
+    }
+    
+    throw new Error('Ошибка извлечения текста из PDF: ' + errorMessage);
   }
 }
 
@@ -185,7 +196,18 @@ var PF_PDF_IMPORTER = {
       ocrLanguage: options.ocrLanguage || 'ru'
     };
     
-    var text = pfExtractTextFromPdf_(blob, extractOptions);
+    var text = null;
+    try {
+      text = pfExtractTextFromPdf_(blob, extractOptions);
+    } catch (extractError) {
+      // Re-throw with more context
+      var errorMsg = extractError.message || extractError.toString();
+      if (errorMsg.indexOf('лимит') !== -1 || errorMsg.indexOf('rate limit') !== -1) {
+        throw extractError; // Already has good message
+      }
+      throw new Error('Ошибка при обработке PDF: ' + errorMsg + 
+                      ' Убедитесь, что файл является выпиской Сбербанка, Тинькофф или Яндекс.');
+    }
     
     // TEMP: логируем первые несколько тысяч символов текста для отладки форматов PDF
     try {

@@ -484,7 +484,7 @@
           })
           .withFailureHandler(function(error) {
             hideProgress();
-            showError('Ошибка при обработке PDF: ' + (error.message || error.toString()) + '. Убедитесь, что файл является выпиской Сбербанка или Тинькофф.');
+            showError('Ошибка при обработке PDF: ' + (error.message || error.toString()) + '. Убедитесь, что файл является выпиской Сбербанка, Тинькофф или Яндекс.');
             document.getElementById('previewBtn').disabled = false;
           })
           .pfParsePdfFile(fileContent, fileName, options);
