@@ -174,6 +174,17 @@ var PF_PDF_YANDEX_PARSER = {
         continue;
       }
 
+      // Фильтруем заголовки страниц и служебные строки
+      if (/^продолжение на следующей странице/i.test(line) ||
+          /^страница \d+ из \d+/i.test(line) ||
+          /^описание операции/i.test(line) ||
+          /^дата и время операции/i.test(line) ||
+          /^дата обработки/i.test(line) ||
+          /^карта/i.test(line) ||
+          /^сумма в валюте/i.test(line)) {
+        continue;
+      }
+
       // Если это строка описания без дат и сумм:
       // - для повторяющихся описаний переводов по СБП складываем
       //   каждую строку в отдельную очередь (pendingDescOnly),
@@ -202,14 +213,33 @@ var PF_PDF_YANDEX_PARSER = {
       // Линия с суммами
       var hasAmountMatch = false;
       var m;
+      // Сбрасываем lastIndex для глобального регекса перед использованием
+      amountsPattern.lastIndex = 0;
       while ((m = amountsPattern.exec(line)) !== null) {
         hasAmountMatch = true;
-        if (!pendingOps.length) {
-          // Нет соответствующей строки описания — пропускаем
+        
+        var pending = null;
+        var amountDate = m[1]; // Дата из строки с суммой
+        
+        // Если есть pendingOps, используем первую запись
+        if (pendingOps.length) {
+          pending = pendingOps.shift();
+        } else if (descBuffer) {
+          // Если нет pendingOps, но есть descBuffer, создаём операцию
+          // с датой из суммы и временем "00:00" (или пытаемся найти время в строке)
+          var timeMatch = line.match(/(\d{2}:\d{2})/);
+          var timeStr = timeMatch ? timeMatch[1] : '00:00';
+          pending = {
+            description: descBuffer.trim(),
+            opDate: amountDate,
+            opTime: timeStr
+          };
+          descBuffer = '';
+        } else {
+          // Нет ни описания, ни буфера — пропускаем эту сумму
           continue;
         }
 
-        var pending = pendingOps.shift();
         var amountStr = m[2];
 
         // Нормализуем число: убираем пробелы, меняем запятую на точку, нормализуем минус
@@ -307,20 +337,20 @@ var PF_PDF_YANDEX_PARSER = {
     // Extract merchant from description (similar to Sberbank parser)
     var merchant = '';
     if (description) {
-      // For "Оплата товаров и услуг MERCHANT_NAME" pattern
-      var merchantMatch = description.match(/Оплата товаров и услуг\s+(.+?)(?:\s+\d+|$)/i);
-      if (merchantMatch) {
-        merchant = merchantMatch[1].trim();
+      // For "Входящий перевод СБП, ..." - extract sender name (first name part)
+      var transferMatch = description.match(/Входящий перевод СБП[,\s]+([^,+]+?)(?:,\s*\+?\d|$)/i);
+      if (transferMatch) {
+        merchant = transferMatch[1].trim();
       } else {
-        // For "Оплата СБП QR (MERCHANT)" pattern
-        var qrMatch = description.match(/Оплата СБП QR\s*\(([^)]+)\)/i);
-        if (qrMatch) {
-          merchant = qrMatch[1].trim();
+        // For "Оплата товаров и услуг MERCHANT_NAME" pattern
+        var merchantMatch = description.match(/Оплата товаров и услуг\s+(.+?)(?:\s+\d+|$)/i);
+        if (merchantMatch) {
+          merchant = merchantMatch[1].trim();
         } else {
-          // For "Входящий перевод СБП, ..." - extract sender name
-          var transferMatch = description.match(/Входящий перевод СБП[,\s]+([^,]+)/i);
-          if (transferMatch) {
-            merchant = transferMatch[1].trim();
+          // For "Оплата СБП QR (MERCHANT)" pattern
+          var qrMatch = description.match(/Оплата СБП QR\s*\(([^)]+)\)/i);
+          if (qrMatch) {
+            merchant = qrMatch[1].trim();
           }
         }
       }
