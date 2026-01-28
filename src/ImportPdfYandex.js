@@ -71,6 +71,14 @@ var PF_PDF_YANDEX_PARSER = {
     Logger.log(snippet);
     Logger.log('[YANDEX-PDF-TEXT] --- END ---');
 
+    // Дополнительно логируем последние ~5000 символов (хвост выписки),
+    // чтобы можно было анализировать последние страницы.
+    var tailStart = Math.max(0, text.length - 5000);
+    var tailSnippet = text.substring(tailStart);
+    Logger.log('[YANDEX-PDF-TEXT-TAIL] --- BEGIN ---');
+    Logger.log(tailSnippet);
+    Logger.log('[YANDEX-PDF-TEXT-TAIL] --- END ---');
+
     var lines = String(text).split(/\r?\n/);
     var rawTransactions = [];
 
