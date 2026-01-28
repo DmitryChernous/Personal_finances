@@ -178,9 +178,6 @@ var PF_PDF_YANDEX_PARSER = {
   /**
    * Normalize raw Yandex PDF transaction to DTO.
    *
-   * Будет использовано после реализации parse().
-   * Пока оставляем заготовку, похожую на fallback-нормализацию.
-   *
    * @param {Object} rawTransaction
    * @param {Object} [options]
    * @returns {TransactionDTO}
@@ -191,17 +188,74 @@ var PF_PDF_YANDEX_PARSER = {
     var defaultCurrency = options.defaultCurrency || 'RUB';
     var defaultAccount = options.defaultAccount || '';
 
+    // Parse date (format: dd.mm.yyyy)
+    var date = null;
+    if (rawTransaction.date) {
+      try {
+        var dateParts = rawTransaction.date.split('.');
+        if (dateParts.length === 3) {
+          var day = parseInt(dateParts[0], 10);
+          var month = parseInt(dateParts[1], 10) - 1; // Month is 0-based
+          var year = parseInt(dateParts[2], 10);
+          date = new Date(year, month, day);
+        }
+      } catch (e) {
+        pfLogWarning_('Error parsing date: ' + rawTransaction.date, 'PF_PDF_YANDEX_PARSER.normalize');
+      }
+    }
+
+    // Parse amount - always positive (type determines expense/income)
+    var amount = Math.abs(rawTransaction.amount || 0);
+
+    // Determine type
+    var type = rawTransaction.type || 'expense';
+
+    // Combine description lines
+    var description = '';
+    if (Array.isArray(rawTransaction.description)) {
+      description = rawTransaction.description.join(' ').trim();
+    } else if (rawTransaction.description) {
+      description = String(rawTransaction.description).trim();
+    }
+
+    // Use category if description is empty
+    if (!description && rawTransaction.category) {
+      description = rawTransaction.category;
+    }
+
+    // Extract merchant from description (similar to Sberbank parser)
+    var merchant = '';
+    if (description) {
+      // For "Оплата товаров и услуг MERCHANT_NAME" pattern
+      var merchantMatch = description.match(/Оплата товаров и услуг\s+(.+?)(?:\s+\d+|$)/i);
+      if (merchantMatch) {
+        merchant = merchantMatch[1].trim();
+      } else {
+        // For "Оплата СБП QR (MERCHANT)" pattern
+        var qrMatch = description.match(/Оплата СБП QR\s*\(([^)]+)\)/i);
+        if (qrMatch) {
+          merchant = qrMatch[1].trim();
+        } else {
+          // For "Входящий перевод СБП, ..." - extract sender name
+          var transferMatch = description.match(/Входящий перевод СБП[,\s]+([^,]+)/i);
+          if (transferMatch) {
+            merchant = transferMatch[1].trim();
+          }
+        }
+      }
+    }
+
     var transaction = {
-      date: rawTransaction.date || null,
-      type: rawTransaction.type || 'expense',
+      date: date,
+      type: type,
       account: rawTransaction.account || defaultAccount,
       accountTo: rawTransaction.accountTo || '',
-      amount: rawTransaction.amount || 0,
+      amount: amount,
       currency: rawTransaction.currency || defaultCurrency,
       category: rawTransaction.category || '',
       subcategory: rawTransaction.subcategory || '',
-      merchant: rawTransaction.merchant || '',
-      description: rawTransaction.description || '',
+      merchant: merchant,
+      description: description,
       tags: rawTransaction.tags || '',
       source: source,
       sourceId: rawTransaction.sourceId || '',
