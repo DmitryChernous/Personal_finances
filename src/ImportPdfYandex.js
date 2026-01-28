@@ -86,6 +86,9 @@ var PF_PDF_YANDEX_PARSER = {
     var inOperationsTable = false;
     // Очередь ожидающих операций (описание + дата/время)
     var pendingOps = [];
+    // Очередь описаний без даты/времени (например, несколько "Входящий перевод СБП"
+    // подряд, после которых идут несколько строк с датой/временем)
+    var pendingDescOnly = [];
 
     // Регексы
     var headerPattern = /описание операции/i;
@@ -146,7 +149,17 @@ var PF_PDF_YANDEX_PARSER = {
         var dtDate = dateTimeOnlyMatch[1];
         var dtTime = dateTimeOnlyMatch[2];
 
-        if (descBuffer) {
+        // Если есть очереди отдельных описаний (например, несколько
+        // "Входящий перевод СБП" подряд), связываем каждую дату/время
+        // с одним элементом очереди.
+        if (pendingDescOnly.length) {
+          var descOnly = pendingDescOnly.shift();
+          pendingOps.push({
+            description: descOnly.description,
+            opDate: dtDate,
+            opTime: dtTime
+          });
+        } else if (descBuffer) {
           var bufferedDesc = descBuffer.trim();
           if (bufferedDesc) {
             pendingOps.push({
@@ -161,17 +174,28 @@ var PF_PDF_YANDEX_PARSER = {
         continue;
       }
 
-      // Если это строка продолжения описания (без сумм и без дат),
-      // накапливаем в буфере.
+      // Если это строка описания без дат и сумм:
+      // - для повторяющихся описаний переводов по СБП складываем
+      //   каждую строку в отдельную очередь (pendingDescOnly),
+      //   чтобы потом сопоставить 1:1 с датами/суммами;
+      // - для остальных многострочных описаний (например,
+      //   "Погашение основного долга по договору №" + номер договора)
+      //   продолжаем накапливать в общем буфере descBuffer.
       if (line.indexOf('₽') === -1 &&
           !/исходящий остаток/i.test(line) &&
           !/всего расходных операций/i.test(line) &&
           !/всего приходных операций/i.test(line) &&
           !/выписка по договору/i.test(line)) {
-        if (descBuffer) {
-          descBuffer += ' ' + line;
+        if (/^входящий перевод сбп/i.test(line)) {
+          pendingDescOnly.push({
+            description: line
+          });
         } else {
-          descBuffer = line;
+          if (descBuffer) {
+            descBuffer += ' ' + line;
+          } else {
+            descBuffer = line;
+          }
         }
       }
 
@@ -222,6 +246,7 @@ var PF_PDF_YANDEX_PARSER = {
             /всего расходных операций/i.test(line) ||
             /выписка по договору/i.test(line)) {
           pendingOps = [];
+          pendingDescOnly = [];
           descBuffer = '';
           inOperationsTable = false; // возможно начинается новая таблица
         }
