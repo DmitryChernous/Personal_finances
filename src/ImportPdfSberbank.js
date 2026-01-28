@@ -655,28 +655,23 @@ var PF_PDF_SBERBANK_PARSER = {
           cleanDesc.match(/^\d{6}$/)) { // Just auth code
         merchant = '';
       } else {
-        // Split by common delimiters
-        var parts = cleanDesc.split(/\.|RUS/);
-        if (parts.length > 0) {
-          merchant = parts[0].trim();
-          // Clean up merchant name
-          merchant = merchant.replace(/[\.\-\s]{2,}/g, ' ').trim();
-          // Remove quotes if present
-          merchant = merchant.replace(/^["']|["']$/g, '');
-          // Remove trailing dots and spaces
-          merchant = merchant.replace(/\.+$/, '').trim();
+        // Special handling for transfers: "Перевод для Ч. Дмитрий Вячеславович."
+        if (/^Перевод для/i.test(cleanDesc)) {
+          // Take everything up to the last dot (drop trailing dot, keep initials + ФИО)
+          var lastDot = cleanDesc.lastIndexOf('.');
+          var transferName = lastDot > 0 ? cleanDesc.substring(0, lastDot) : cleanDesc;
+          merchant = transferName.trim();
+        } else {
+          // Generic case: take everything before " RUS" or before trailing dot
+          var parts = cleanDesc.split(/\s+RUS\b/i);
+          var base = parts[0] || cleanDesc;
+          merchant = base.trim();
         }
         
-        // If merchant is still empty or too short, try to extract from full description
-        if (!merchant || merchant.length < 3) {
-          // Try to find merchant name before "Операция" or "RUS"
-          var match = cleanDesc.match(/^(.+?)(?:\.\s*(?:RUS|Операция)|$)/i);
-          if (match && match[1] && match[1].trim().length >= 3) {
-            merchant = match[1].trim();
-            merchant = merchant.replace(/[\.\-\s]{2,}/g, ' ').trim();
-            merchant = merchant.replace(/^["']|["']$/g, '');
-          }
-        }
+        // Clean up merchant name
+        merchant = merchant.replace(/[\.\-\s]{2,}/g, ' ').trim();
+        merchant = merchant.replace(/^["']|["']$/g, '');
+        merchant = merchant.replace(/\.+$/, '').trim();
       }
     }
     
@@ -716,8 +711,8 @@ var PF_PDF_SBERBANK_PARSER = {
                  (merchant || description.substring(0, 10) || 'unknown').replace(/\s/g, '');
     }
     
-    // Use bank category as initial category – it contains useful info
-    // for later user-defined categorization rules (e.g. "Супермаркеты", "Перевод СБП").
+    // DEBUG: log normalized DTO before returning (temporary)
+    // Logger.log('[PDF-NORMALIZE] Raw: ' + JSON.stringify(rawTransaction));
     var transaction = {
       date: date,
       type: type,
