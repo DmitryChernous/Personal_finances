@@ -80,81 +80,62 @@ var PF_PDF_YANDEX_PARSER = {
     Logger.log('[YANDEX-PDF-TEXT-TAIL] --- END ---');
 
     var lines = String(text).split(/\r?\n/);
-    var rawTransactions = [];
 
-    // Флаг, что мы дошли до таблицы с операциями
+    // Собираем описания+даты и суммы отдельно, потом сопоставляем по дате
+    // (порядок строк в OCR может не совпадать с порядком в таблице)
+    var opsList = [];   // [{ description, opDate, opTime }, ...] в порядке появления
+    var amountsList = []; // [{ procDate, amount }, ...] в порядке появления
+
     var inOperationsTable = false;
-    // Очередь ожидающих операций (описание + дата/время)
-    var pendingOps = [];
-    // Очередь описаний без даты/времени (например, несколько "Входящий перевод СБП"
-    // подряд, после которых идут несколько строк с датой/временем)
     var pendingDescOnly = [];
+    var descBuffer = '';
 
-    // Регексы
     var headerPattern = /описание операции/i;
     var descWithDateTimePattern = /^(.*?)(\d{2}\.\d{2}\.\d{4})\s+в\s+(\d{2}:\d{2})/i;
-    // Строка с датой обработки, опциональной картой и суммами:
-    //  11.01.2025 *7088 –100,00 ₽ –100,00 ₽
-    //  или без карты:
-    //  05.01.2025 –273,00 ₽ –273,00 ₽
     var amountsPattern = /(\d{2}\.\d{2}\.\d{4})\s+(?:\*\d{4}\s+)?([+\-–−]?\d[\d\s]*,\d{2})\s*₽\s+([+\-–−]?\d[\d\s]*,\d{2})\s*₽/g;
-
-    // Буфер для многострочного описания до строки с датой/временем
-    var descBuffer = '';
 
     for (var i = 0; i < lines.length; i++) {
       var line = lines[i].trim();
-      if (!line) {
-        continue;
-      }
+      if (!line) continue;
 
-      // Ищем заголовок таблицы
       if (!inOperationsTable) {
-        if (headerPattern.test(line)) {
-          inOperationsTable = true;
-        }
+        if (headerPattern.test(line)) inOperationsTable = true;
         continue;
       }
 
-      // Линия описания с датой и временем (описание и дата в одной строке)
+      // Сброс при итогах / новой таблице
+      if (/исходящий остаток/i.test(line) ||
+          /всего расходных операций/i.test(line) ||
+          /выписка по договору/i.test(line)) {
+        pendingDescOnly = [];
+        descBuffer = '';
+        inOperationsTable = false;
+        continue;
+      }
+
+      // Описание + дата/время в одной строке
       var descMatch = line.match(descWithDateTimePattern);
       if (descMatch) {
         var descText = descMatch[1].trim();
         var opDate = descMatch[2];
         var opTime = descMatch[3];
-
-        // Если до этого накапливался буфер описания (несколько строк),
-        // приклеиваем его перед текущим описанием.
-        if (!descText && descBuffer) {
-          descText = descBuffer.trim();
-        } else if (descBuffer) {
-          descText = (descBuffer + ' ' + descText).trim();
-        }
+        if (!descText && descBuffer) descText = descBuffer.trim();
+        else if (descBuffer) descText = (descBuffer + ' ' + descText).trim();
         descBuffer = '';
-
-        // Иногда описание может быть пустым, но это редкий случай
         if (descText) {
-          pendingOps.push({
-            description: descText,
-            opDate: opDate,
-            opTime: opTime
-          });
+          opsList.push({ description: descText, opDate: opDate, opTime: opTime });
         }
         continue;
       }
 
-      // Линия ТОЛЬКО с датой и временем (описание на предыдущих строках)
+      // Только дата и время
       var dateTimeOnlyMatch = line.match(/^(\d{2}\.\d{2}\.\d{4})\s+в\s+(\d{2}:\d{2})/i);
       if (dateTimeOnlyMatch) {
         var dtDate = dateTimeOnlyMatch[1];
         var dtTime = dateTimeOnlyMatch[2];
-
-        // Если есть очереди отдельных описаний (например, несколько
-        // "Входящий перевод СБП" подряд), связываем каждую дату/время
-        // с одним элементом очереди.
         if (pendingDescOnly.length) {
           var descOnly = pendingDescOnly.shift();
-          pendingOps.push({
+          opsList.push({
             description: descOnly.description,
             opDate: dtDate,
             opTime: dtTime
@@ -162,19 +143,18 @@ var PF_PDF_YANDEX_PARSER = {
         } else if (descBuffer) {
           var bufferedDesc = descBuffer.trim();
           if (bufferedDesc) {
-            pendingOps.push({
+            opsList.push({
               description: bufferedDesc,
               opDate: dtDate,
               opTime: dtTime
             });
           }
         }
-        // После использования буфера очищаем его
         descBuffer = '';
         continue;
       }
 
-      // Фильтруем заголовки страниц и служебные строки
+      // Заголовки страниц — пропускаем
       if (/^продолжение на следующей странице/i.test(line) ||
           /^страница \d+ из \d+/i.test(line) ||
           /^описание операции/i.test(line) ||
@@ -185,103 +165,120 @@ var PF_PDF_YANDEX_PARSER = {
         continue;
       }
 
-      // Если это строка описания без дат и сумм:
-      // - для повторяющихся описаний переводов по СБП складываем
-      //   каждую строку в отдельную очередь (pendingDescOnly),
-      //   чтобы потом сопоставить 1:1 с датами/суммами;
-      // - для остальных многострочных описаний (например,
-      //   "Погашение основного долга по договору №" + номер договора)
-      //   продолжаем накапливать в общем буфере descBuffer.
+      // Строки описания без дат и сумм
       if (line.indexOf('₽') === -1 &&
-          !/исходящий остаток/i.test(line) &&
-          !/всего расходных операций/i.test(line) &&
-          !/всего приходных операций/i.test(line) &&
-          !/выписка по договору/i.test(line)) {
+          !/всего приходных операций/i.test(line)) {
         if (/^входящий перевод сбп/i.test(line)) {
-          pendingDescOnly.push({
-            description: line
-          });
+          pendingDescOnly.push({ description: line });
         } else {
-          if (descBuffer) {
-            descBuffer += ' ' + line;
-          } else {
-            descBuffer = line;
-          }
+          descBuffer = descBuffer ? descBuffer + ' ' + line : line;
         }
+        continue;
       }
 
-      // Линия с суммами
-      var hasAmountMatch = false;
-      var m;
-      // Сбрасываем lastIndex для глобального регекса перед использованием
+      // Строки с суммами — только собираем (procDate, amount)
       amountsPattern.lastIndex = 0;
+      var m;
       while ((m = amountsPattern.exec(line)) !== null) {
-        hasAmountMatch = true;
-        
-        var pending = null;
-        var amountDate = m[1]; // Дата из строки с суммой
-        
-        // Если есть pendingOps, используем первую запись
-        if (pendingOps.length) {
-          pending = pendingOps.shift();
-        } else if (descBuffer) {
-          // Если нет pendingOps, но есть descBuffer, создаём операцию
-          // с датой из суммы и временем "00:00" (или пытаемся найти время в строке)
-          var timeMatch = line.match(/(\d{2}:\d{2})/);
-          var timeStr = timeMatch ? timeMatch[1] : '00:00';
-          pending = {
-            description: descBuffer.trim(),
-            opDate: amountDate,
-            opTime: timeStr
-          };
-          descBuffer = '';
-        } else {
-          // Нет ни описания, ни буфера — пропускаем эту сумму
-          continue;
-        }
-
-        var amountStr = m[2];
-
-        // Нормализуем число: убираем пробелы, меняем запятую на точку, нормализуем минус
-        var normalizedAmountStr = amountStr
+        var amountStr = m[2]
           .replace(/\s+/g, '')
           .replace(',', '.')
           .replace(/[–−]/g, '-');
-
-        var amount = parseFloat(normalizedAmountStr);
-        if (isNaN(amount)) {
-          continue;
-        }
-
-        var type = amount >= 0 ? 'income' : 'expense';
-
-        rawTransactions.push({
-          bank: 'yandex',
-          date: pending.opDate,
-          time: pending.opTime,
-          description: [pending.description],
-          amount: amount,
-          currency: 'RUB',
-          type: type,
-          // Для дальнейшего улучшения можно будет выделять категорию из описания
-          category: '',
-          sourceId: pending.opDate.replace(/\D/g, '') + pending.opTime.replace(/\D/g, '')
-        });
-      }
-
-      // Если строка с суммами не содержала ни одного матча, сбрасываем state,
-      // когда доходим до итогов / новых разделов.
-      if (!hasAmountMatch) {
-        if (/исходящий остаток/i.test(line) ||
-            /всего расходных операций/i.test(line) ||
-            /выписка по договору/i.test(line)) {
-          pendingOps = [];
-          pendingDescOnly = [];
-          descBuffer = '';
-          inOperationsTable = false; // возможно начинается новая таблица
+        var amount = parseFloat(amountStr);
+        if (!isNaN(amount)) {
+          amountsList.push({ procDate: m[1], amount: amount });
         }
       }
     }
+
+    // Сопоставление по дате: группируем описание+время и суммы по дате,
+    // внутри каждой даты объединяем по порядку (1-я сумма с 1-м описанием и т.д.)
+    var opsByDate = {};
+    var datesOrder = [];
+    for (var j = 0; j < opsList.length; j++) {
+      var d = opsList[j].opDate;
+      if (!opsByDate[d]) {
+        opsByDate[d] = [];
+        datesOrder.push(d);
+      }
+      opsByDate[d].push(opsList[j]);
+    }
+    var amountsByDate = {};
+    for (var k = 0; k < amountsList.length; k++) {
+      var d2 = amountsList[k].procDate;
+      if (!amountsByDate[d2]) amountsByDate[d2] = [];
+      amountsByDate[d2].push(amountsList[k].amount);
+    }
+
+    var rawTransactions = [];
+    for (var di = 0; di < datesOrder.length; di++) {
+      var dateKey = datesOrder[di];
+      var opsOnDate = opsByDate[dateKey] || [];
+      var amtsOnDate = amountsByDate[dateKey] || [];
+      var n = Math.min(opsOnDate.length, amtsOnDate.length);
+      for (var t = 0; t < n; t++) {
+        var op = opsOnDate[t];
+        var amount = amtsOnDate[t];
+        var type = amount >= 0 ? 'income' : 'expense';
+        rawTransactions.push({
+          bank: 'yandex',
+          date: op.opDate,
+          time: op.opTime,
+          description: [op.description],
+          amount: amount,
+          currency: 'RUB',
+          type: type,
+          category: '',
+          sourceId: op.opDate.replace(/\D/g, '') + op.opTime.replace(/\D/g, '')
+        });
+      }
+      // Суммы без описания (на эту дату): добавляем с датой из суммы, время 00:00
+      for (var t2 = n; t2 < amtsOnDate.length; t2++) {
+        var amount2 = amtsOnDate[t2];
+        var type2 = amount2 >= 0 ? 'income' : 'expense';
+        rawTransactions.push({
+          bank: 'yandex',
+          date: dateKey,
+          time: '00:00',
+          description: [''],
+          amount: amount2,
+          currency: 'RUB',
+          type: type2,
+          category: '',
+          sourceId: dateKey.replace(/\D/g, '') + '0000'
+        });
+      }
+    }
+    // Даты, которые есть только в суммах (нет в opsList)
+    for (var dateKey2 in amountsByDate) {
+      if (opsByDate[dateKey2]) continue;
+      var amts = amountsByDate[dateKey2];
+      for (var t3 = 0; t3 < amts.length; t3++) {
+        var amount3 = amts[t3];
+        var type3 = amount3 >= 0 ? 'income' : 'expense';
+        rawTransactions.push({
+          bank: 'yandex',
+          date: dateKey2,
+          time: '00:00',
+          description: [''],
+          amount: amount3,
+          currency: 'RUB',
+          type: type3,
+          category: '',
+          sourceId: dateKey2.replace(/\D/g, '') + '0000'
+        });
+      }
+    }
+
+    // Сортируем по дате и времени для хронологического порядка
+    rawTransactions.sort(function(a, b) {
+      var dateA = a.date.replace(/(\d{2})\.(\d{2})\.(\d{4})/, '$3$2$1');
+      var dateB = b.date.replace(/(\d{2})\.(\d{2})\.(\d{4})/, '$3$2$1');
+      if (dateA !== dateB) return dateA < dateB ? -1 : 1;
+      var timeA = (a.time || '00:00').replace(':', '');
+      var timeB = (b.time || '00:00').replace(':', '');
+      return timeA < timeB ? -1 : (timeA > timeB ? 1 : 0);
+    });
 
     return rawTransactions;
   },
