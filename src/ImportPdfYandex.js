@@ -1,5 +1,6 @@
 /**
  * PDF parser for Yandex Card statements.
+ * v3: последовательное сопоставление — при появлении строки с суммой сразу привязываем к последней операции с этой датой (строка описания → строка суммы в документе)
  *
  * Важно: структура текста Яндекс-выписки пока не изучена.
  * Этот модуль создаёт каркас парсера и логирует извлечённый текст,
@@ -46,13 +47,11 @@ var PF_PDF_YANDEX_PARSER = {
    *       "02.01.2025 –245,00 ₽ –245,00 ₽"
    *    Иногда в одной строке с суммами сразу несколько операций.
    *
-   * Алгоритм:
-   *  - читаем текст построчно;
-   *  - после заголовка "Описание операции" начинаем собирать "ожидающие" операции:
-   *    каждая строка вида "<описание> dd.mm.yyyy в HH:MM" -> кладём в очередь pending;
-   *  - строки с суммами вида:
-   *      "dd.mm.yyyy [*КАРТА] +/–XXX,YY ₽ +/–XXX,YY ₽ [dd.mm.yyyy ...]"
-   *    парсим регуляркой, на каждый матч берём по одному элементу из очереди pending.
+ * Алгоритм (v3 — последовательное сопоставление):
+ *  - читаем текст построчно;
+ *  - операции (описание + dd.mm.yyyy в HH:MM) кладём в очередь по дате;
+ *  - при появлении строки с суммой (dd.mm.yyyy … ₽ … ₽) сразу привязываем к первой ожидающей операции с этой датой.
+ *  Надёжность зависит от порядка в PDF: если в выписке строка описания идёт перед строкой суммы по каждой операции — сопоставление будет верным.
    *
    * @param {string} text - Extracted text from PDF
    * @param {Object} [options]
@@ -81,14 +80,65 @@ var PF_PDF_YANDEX_PARSER = {
 
     var lines = String(text).split(/\r?\n/);
 
-    // Собираем описания+даты и суммы отдельно, потом сопоставляем по дате
-    // (порядок строк в OCR может не совпадать с порядком в таблице)
-    var opsList = [];   // [{ description, opDate, opTime }, ...] в порядке появления
-    var amountsList = []; // [{ procDate, amount }, ...] в порядке появления
+    // Последовательное сопоставление: при появлении строки с суммой сразу привязываем к последней
+    // ожидающей операции с той же датой (как в документе: строка описания → строка суммы).
+    var pendingOpsByDate = {};  // date -> [{ description, opDate, opTime }, ...] очередь по порядку
+    var rawTransactions = [];
+    var fallbackIndexByDate = {};  // date -> число уже выданных fallback для уникального sourceId
 
     var inOperationsTable = false;
     var pendingDescOnly = [];
     var descBuffer = '';
+
+    function pushOp(opDate, opTime, description) {
+      if (!pendingOpsByDate[opDate]) pendingOpsByDate[opDate] = [];
+      pendingOpsByDate[opDate].push({ description: description, opDate: opDate, opTime: opTime });
+    }
+
+    function consumeOp(procDate, amount) {
+      var queue = pendingOpsByDate[procDate];
+      var op = queue && queue.length ? queue.shift() : null;
+      if (op) {
+        var type = amount >= 0 ? 'income' : 'expense';
+        rawTransactions.push({
+          bank: 'yandex',
+          date: op.opDate,
+          time: op.opTime,
+          description: [op.description],
+          amount: amount,
+          currency: 'RUB',
+          type: type,
+          category: '',
+          sourceId: op.opDate.replace(/\D/g, '') + op.opTime.replace(/\D/g, '')
+        });
+      } else {
+        var idx = (fallbackIndexByDate[procDate] || 0);
+        fallbackIndexByDate[procDate] = idx + 1;
+        var type2 = amount >= 0 ? 'income' : 'expense';
+        rawTransactions.push({
+          bank: 'yandex',
+          date: procDate,
+          time: '00:00',
+          description: [''],
+          amount: amount,
+          currency: 'RUB',
+          type: type2,
+          category: '',
+          sourceId: procDate.replace(/\D/g, '') + ('000' + idx).slice(-4)
+        });
+      }
+    }
+
+    // Убираем из описаний заголовки страниц и шапку таблицы (OCR часто вставляет их в текст)
+    function cleanDesc_(s) {
+      if (!s || typeof s !== 'string') return '';
+      return s
+        .replace(/\s*МСК\s+Дата обработки\s+МСК\s*/gi, ' ')
+        .replace(/\s*Дата обработки\s+МСК\s*/gi, ' ')
+        .replace(/\s*МСК\s+Оплата/gi, ' Оплата')
+        .replace(/\s{2,}/g, ' ')
+        .trim();
+    }
 
     var headerPattern = /описание операции/i;
     var descWithDateTimePattern = /^(.*?)(\d{2}\.\d{2}\.\d{4})\s+в\s+(\d{2}:\d{2})/i;
@@ -116,14 +166,14 @@ var PF_PDF_YANDEX_PARSER = {
       // Описание + дата/время в одной строке
       var descMatch = line.match(descWithDateTimePattern);
       if (descMatch) {
-        var descText = descMatch[1].trim();
+        var descText = cleanDesc_(descMatch[1].trim());
         var opDate = descMatch[2];
         var opTime = descMatch[3];
-        if (!descText && descBuffer) descText = descBuffer.trim();
-        else if (descBuffer) descText = (descBuffer + ' ' + descText).trim();
+        if (!descText && descBuffer) descText = cleanDesc_(descBuffer.trim());
+        else if (descBuffer) descText = cleanDesc_(descBuffer + ' ' + descMatch[1].trim());
         descBuffer = '';
         if (descText) {
-          opsList.push({ description: descText, opDate: opDate, opTime: opTime });
+          pushOp(opDate, opTime, descText);
         }
         continue;
       }
@@ -135,20 +185,10 @@ var PF_PDF_YANDEX_PARSER = {
         var dtTime = dateTimeOnlyMatch[2];
         if (pendingDescOnly.length) {
           var descOnly = pendingDescOnly.shift();
-          opsList.push({
-            description: descOnly.description,
-            opDate: dtDate,
-            opTime: dtTime
-          });
+          pushOp(dtDate, dtTime, cleanDesc_(descOnly.description));
         } else if (descBuffer) {
-          var bufferedDesc = descBuffer.trim();
-          if (bufferedDesc) {
-            opsList.push({
-              description: bufferedDesc,
-              opDate: dtDate,
-              opTime: dtTime
-            });
-          }
+          var bufferedDesc = cleanDesc_(descBuffer.trim());
+          if (bufferedDesc) pushOp(dtDate, dtTime, bufferedDesc);
         }
         descBuffer = '';
         continue;
@@ -169,14 +209,15 @@ var PF_PDF_YANDEX_PARSER = {
       if (line.indexOf('₽') === -1 &&
           !/всего приходных операций/i.test(line)) {
         if (/^входящий перевод сбп/i.test(line)) {
-          pendingDescOnly.push({ description: line });
+          pendingDescOnly.push({ description: cleanDesc_(line) });
         } else {
-          descBuffer = descBuffer ? descBuffer + ' ' + line : line;
+          var cleaned = cleanDesc_(line);
+          if (cleaned) descBuffer = descBuffer ? descBuffer + ' ' + cleaned : cleaned;
         }
         continue;
       }
 
-      // Строки с суммами — только собираем (procDate, amount)
+      // Строки с суммами — сразу сопоставляем с очередью операций по этой дате
       amountsPattern.lastIndex = 0;
       var m;
       while ((m = amountsPattern.exec(line)) !== null) {
@@ -186,87 +227,8 @@ var PF_PDF_YANDEX_PARSER = {
           .replace(/[–−]/g, '-');
         var amount = parseFloat(amountStr);
         if (!isNaN(amount)) {
-          amountsList.push({ procDate: m[1], amount: amount });
+          consumeOp(m[1], amount);
         }
-      }
-    }
-
-    // Сопоставление по дате: группируем описание+время и суммы по дате,
-    // внутри каждой даты объединяем по порядку (1-я сумма с 1-м описанием и т.д.)
-    var opsByDate = {};
-    var datesOrder = [];
-    for (var j = 0; j < opsList.length; j++) {
-      var d = opsList[j].opDate;
-      if (!opsByDate[d]) {
-        opsByDate[d] = [];
-        datesOrder.push(d);
-      }
-      opsByDate[d].push(opsList[j]);
-    }
-    var amountsByDate = {};
-    for (var k = 0; k < amountsList.length; k++) {
-      var d2 = amountsList[k].procDate;
-      if (!amountsByDate[d2]) amountsByDate[d2] = [];
-      amountsByDate[d2].push(amountsList[k].amount);
-    }
-
-    var rawTransactions = [];
-    for (var di = 0; di < datesOrder.length; di++) {
-      var dateKey = datesOrder[di];
-      var opsOnDate = opsByDate[dateKey] || [];
-      var amtsOnDate = amountsByDate[dateKey] || [];
-      var n = Math.min(opsOnDate.length, amtsOnDate.length);
-      for (var t = 0; t < n; t++) {
-        var op = opsOnDate[t];
-        var amount = amtsOnDate[t];
-        var type = amount >= 0 ? 'income' : 'expense';
-        rawTransactions.push({
-          bank: 'yandex',
-          date: op.opDate,
-          time: op.opTime,
-          description: [op.description],
-          amount: amount,
-          currency: 'RUB',
-          type: type,
-          category: '',
-          sourceId: op.opDate.replace(/\D/g, '') + op.opTime.replace(/\D/g, '')
-        });
-      }
-      // Суммы без описания (на эту дату): добавляем с датой из суммы, время 00:00
-      for (var t2 = n; t2 < amtsOnDate.length; t2++) {
-        var amount2 = amtsOnDate[t2];
-        var type2 = amount2 >= 0 ? 'income' : 'expense';
-        rawTransactions.push({
-          bank: 'yandex',
-          date: dateKey,
-          time: '00:00',
-          description: [''],
-          amount: amount2,
-          currency: 'RUB',
-          type: type2,
-          category: '',
-          sourceId: dateKey.replace(/\D/g, '') + '0000'
-        });
-      }
-    }
-    // Даты, которые есть только в суммах (нет в opsList)
-    for (var dateKey2 in amountsByDate) {
-      if (opsByDate[dateKey2]) continue;
-      var amts = amountsByDate[dateKey2];
-      for (var t3 = 0; t3 < amts.length; t3++) {
-        var amount3 = amts[t3];
-        var type3 = amount3 >= 0 ? 'income' : 'expense';
-        rawTransactions.push({
-          bank: 'yandex',
-          date: dateKey2,
-          time: '00:00',
-          description: [''],
-          amount: amount3,
-          currency: 'RUB',
-          type: type3,
-          category: '',
-          sourceId: dateKey2.replace(/\D/g, '') + '0000'
-        });
       }
     }
 
@@ -315,16 +277,29 @@ var PF_PDF_YANDEX_PARSER = {
     // Parse amount - always positive (type determines expense/income)
     var amount = Math.abs(rawTransaction.amount || 0);
 
-    // Determine type
+    // Determine type: по описанию надёжнее, чем по знаку суммы (OCR/парсинг может ошибаться)
     var type = rawTransaction.type || 'expense';
+    if (rawTransaction.description) {
+      var descStr = Array.isArray(rawTransaction.description)
+        ? rawTransaction.description.join(' ').trim()
+        : String(rawTransaction.description).trim();
+      if (/входящий перевод\s+сбп/i.test(descStr)) type = 'income';
+      else if (/оплата\s+(товаров|сбп|услуг)/i.test(descStr) || /оплата\s+сбп\s*qr/i.test(descStr)) type = 'expense';
+    }
 
-    // Combine description lines
+    // Combine description lines and strip header fragments (МСК Дата обработки и т.д.)
     var description = '';
     if (Array.isArray(rawTransaction.description)) {
       description = rawTransaction.description.join(' ').trim();
     } else if (rawTransaction.description) {
       description = String(rawTransaction.description).trim();
     }
+    description = description
+      .replace(/\s*МСК\s+Дата обработки\s+МСК\s*/gi, ' ')
+      .replace(/\s*Дата обработки\s+МСК\s*/gi, ' ')
+      .replace(/\s*МСК\s+Оплата/gi, ' Оплата')
+      .replace(/\s{2,}/g, ' ')
+      .trim();
 
     // Use category if description is empty
     if (!description && rawTransaction.category) {

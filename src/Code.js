@@ -19,6 +19,7 @@ function onOpen() {
   menu.addItem(pfT_('menu.quick_entry'), 'pfShowQuickEntry');
   menu.addItem(pfT_('menu.search_transactions'), 'pfShowSearchDialog');
   menu.addItem(pfT_('menu.import_transactions'), 'pfImportTransactions');
+  menu.addItem(pfT_('menu.sync_raw_sheets'), 'pfSyncRawSheetsToTransactionsMenu');
   menu.addItem(pfT_('menu.find_duplicate'), 'pfFindDuplicateByKey');
   menu.addSeparator();
   menu.addItem(pfT_('menu.archive_old_transactions'), 'pfArchiveOldTransactions');
@@ -79,6 +80,24 @@ function onEdit(e) {
 function pfSetup() {
   pfRunSetup_();
   SpreadsheetApp.getUi().alert('Готово: таблица инициализирована/обновлена.');
+}
+
+/**
+ * Синхронизация raw-листов с листом «Транзакции». Вызывается из меню.
+ */
+function pfSyncRawSheetsToTransactionsMenu() {
+  var result = pfSyncRawSheetsToTransactions();
+  var lang = pfGetLanguage_();
+  var msg = '';
+  if (lang === 'en') {
+    msg = 'Processed sheets: ' + result.sheetsProcessed + '\nAdded: ' + result.added + '\nSkipped (duplicates): ' + result.skipped;
+  } else {
+    msg = 'Обработано листов: ' + result.sheetsProcessed + '\nДобавлено: ' + result.added + '\nПропущено (дубликаты): ' + result.skipped;
+  }
+  if (result.errors && result.errors.length > 0) {
+    msg += '\n\nОшибки:\n' + result.errors.join('\n');
+  }
+  SpreadsheetApp.getUi().alert(msg);
 }
 
 /**
