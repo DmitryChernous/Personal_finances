@@ -42,12 +42,14 @@ function pfGetRawSheets_(ss) {
 }
 
 /**
- * Парсит дату из строки вида dd.mm.yyyy.
- * @param {string} s
+ * Парсит дату: объект Date из Sheets или строка dd.mm.yyyy.
+ * @param {Date|string} s
  * @returns {Date|null}
  */
 function pfParseRawDate_(s) {
-  if (!s || typeof s !== 'string') return null;
+  if (s === null || s === undefined) return null;
+  if (s instanceof Date && !isNaN(s.getTime())) return s;
+  if (typeof s !== 'string') return null;
   var parts = s.trim().split('.');
   if (parts.length !== 3) return null;
   var day = parseInt(parts[0], 10);
@@ -60,42 +62,60 @@ function pfParseRawDate_(s) {
 }
 
 /**
- * Нормализует время для SourceId: "16:40" -> "1640", "0:42" -> "0042".
- * @param {string} s
+ * Нормализует время для SourceId: "16:40" -> "1640", "0:42" -> "0042". Принимает строку или число (доля дня из Sheets).
+ * @param {string|number} s
  * @returns {string}
  */
 function pfNormalizeRawTime_(s) {
-  if (!s || typeof s !== 'string') return '0000';
-  var t = s.trim().replace(':', '');
+  if (s === null || s === undefined) return '0000';
+  if (typeof s === 'number' && s >= 0 && s < 1) {
+    var h = Math.floor(s * 24);
+    var m = Math.round((s * 24 - h) * 60);
+    return (h < 10 ? '0' : '') + h + (m < 10 ? '0' : '') + m;
+  }
+  var t = String(s).trim().replace(':', '');
   if (t.length === 3) t = '0' + t;
   if (t.length < 4) t = (t + '0000').substring(0, 4);
   return t;
 }
 
 /**
- * Парсит сумму из строки вида "-1 500,00" или "1 300,00".
- * @param {*} val - значение ячейки (строка или число)
+ * Парсит сумму: число из Sheets или строка вида "-1 500,00", "1 300,00".
+ * @param {*} val - значение ячейки (число или строка)
  * @returns {{ amount: number, type: string }|null}
  */
 function pfParseRawAmount_(val) {
   if (val === null || val === undefined || val === '') return null;
-  var s = String(val).replace(/\s/g, '').replace(',', '.');
-  var num = parseFloat(s);
-  if (isNaN(num)) return null;
+  var num;
+  if (typeof val === 'number' && !isNaN(val)) {
+    num = val;
+  } else {
+    var s = String(val).replace(/\s/g, '').replace(',', '.');
+    num = parseFloat(s);
+    if (isNaN(num)) return null;
+  }
   var type = num < 0 ? 'expense' : 'income';
   return { amount: Math.abs(num), type: type };
 }
 
 /**
  * Формирует SourceId для дедупликации: дата (ddmmyyyy) + время (hhmm) + сумма (целое).
- * @param {string} dateStr - dd.mm.yyyy
- * @param {string} timeStr - HH:mm
+ * @param {Date|string} dateVal - дата (объект Date или строка dd.mm.yyyy)
+ * @param {string|number} timeStr - время HH:mm или доля дня
  * @param {number} amount
  * @returns {string}
  */
-function pfRawSourceId_(dateStr, timeStr, amount) {
-  var d = (dateStr || '').replace(/\D/g, '');
-  if (d.length !== 8) d = '00000000';
+function pfRawSourceId_(dateVal, timeStr, amount) {
+  var d;
+  if (dateVal instanceof Date && !isNaN(dateVal.getTime())) {
+    var day = dateVal.getDate();
+    var month = dateVal.getMonth() + 1;
+    var year = dateVal.getFullYear();
+    d = (day < 10 ? '0' : '') + day + (month < 10 ? '0' : '') + month + year;
+  } else {
+    d = String(dateVal || '').replace(/\D/g, '');
+    if (d.length !== 8) d = '00000000';
+  }
   var t = pfNormalizeRawTime_(timeStr || '');
   var a = String(Math.round(amount));
   return d + t + a;
@@ -133,7 +153,7 @@ function pfReadRawSheet_(sheet, sheetName, defaultCurrency) {
       ? String(accountVal).trim()
       : sheetName;
 
-    var sourceId = pfRawSourceId_(String(dateStr), String(timeStr || ''), parsed.amount);
+    var sourceId = pfRawSourceId_(date, timeStr, parsed.amount);
 
     result.push({
       date: date,
