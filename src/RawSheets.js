@@ -62,12 +62,18 @@ function pfParseRawDate_(s) {
 }
 
 /**
- * Нормализует время для SourceId: "16:40" -> "1640", "0:42" -> "0042". Принимает строку или число (доля дня из Sheets).
- * @param {string|number} s
- * @returns {string}
+ * Нормализует время для SourceId: "16:40" -> "1640", "0:42" -> "0042".
+ * Принимает строку, число (доля дня из Sheets) или Date (время из ячейки).
+ * @param {string|number|Date} s
+ * @returns {string} "hhmm" (4 цифры)
  */
 function pfNormalizeRawTime_(s) {
   if (s === null || s === undefined) return '0000';
+  if (s instanceof Date && !isNaN(s.getTime())) {
+    var h = s.getHours();
+    var m = s.getMinutes();
+    return (h < 10 ? '0' : '') + h + (m < 10 ? '0' : '') + m;
+  }
   if (typeof s === 'number' && s >= 0 && s < 1) {
     var h = Math.floor(s * 24);
     var m = Math.round((s * 24 - h) * 60);
