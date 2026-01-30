@@ -227,8 +227,9 @@ function pfSyncRawSheetsToTransactions(ss) {
     return result;
   }
 
-  // Записать новые строки в лист «Транзакции» в порядке колонок PF_TRANSACTIONS_SCHEMA
-  var colOrder = ['Date', 'Type', 'Account', 'AccountTo', 'Amount', 'Currency', 'Category', 'Subcategory', 'Merchant', 'Description', 'Tags', 'Source', 'SourceId', 'Status'];
+  // Записать новые строки в лист «Транзакции» в порядке колонок PF_TRANSACTIONS_SCHEMA.
+  // Ключи объекта tx — в нижнем регистре (date, type, account, ...).
+  var colOrder = ['date', 'type', 'account', 'accountTo', 'amount', 'currency', 'category', 'subcategory', 'merchant', 'description', 'tags', 'source', 'sourceId', 'status'];
   var numCols = colOrder.length;
   var values = [];
   for (var i = 0; i < allNewRows.length; i++) {
@@ -237,7 +238,7 @@ function pfSyncRawSheetsToTransactions(ss) {
     for (var c = 0; c < numCols; c++) {
       var key = colOrder[c];
       var v = tx[key];
-      if (key === 'Date' && v instanceof Date) {
+      if (key === 'date' && v instanceof Date) {
         row.push(v);
       } else {
         row.push(v !== undefined && v !== null ? v : '');
