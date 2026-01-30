@@ -105,7 +105,14 @@ function pfParseRawAmount_(val) {
 }
 
 /**
- * Формирует SourceId для дедупликации: дата (ddmmyyyy) + время (hhmm) + сумма (целое).
+ * Префикс для SourceId, чтобы таблица всегда воспринимала значение как текст (не число).
+ * Без префикса длинные числовые строки отображаются в экспоненциальной нотации (2,21E+15).
+ */
+var PF_RAW_SOURCE_ID_PREFIX = 'id_';
+
+/**
+ * Формирует SourceId для дедупликации: префикс + дата (ddmmyyyy) + время (hhmm) + сумма (целое).
+ * Префикс гарантирует, что ячейка хранится как текст, а не как число.
  * @param {Date|string} dateVal - дата (объект Date или строка dd.mm.yyyy)
  * @param {string|number} timeStr - время HH:mm или доля дня
  * @param {number} amount
@@ -124,7 +131,7 @@ function pfRawSourceId_(dateVal, timeStr, amount) {
   }
   var t = pfNormalizeRawTime_(timeStr || '');
   var a = String(Math.round(amount));
-  return d + t + a;
+  return PF_RAW_SOURCE_ID_PREFIX + d + t + a;
 }
 
 /**
@@ -284,11 +291,13 @@ function pfSyncRawSheetsToTransactions(ss) {
     range.setValues(chunk);
   }
 
-  // Формат даты и суммы (getRange(row, col, numRows, numCols) — один столбец)
+  // Формат даты, суммы и ID источника (getRange(row, col, numRows, numCols) — один столбец)
   var dateCol = pfColumnIndex_(PF_TRANSACTIONS_SCHEMA, 'Date');
   var amountCol = pfColumnIndex_(PF_TRANSACTIONS_SCHEMA, 'Amount');
+  var sourceIdCol = pfColumnIndex_(PF_TRANSACTIONS_SCHEMA, 'SourceId');
   if (dateCol) txSheet.getRange(startRow, dateCol, numRows, 1).setNumberFormat('dd.mm.yyyy');
   if (amountCol) txSheet.getRange(startRow, amountCol, numRows, 1).setNumberFormat('0.00');
+  if (sourceIdCol) txSheet.getRange(startRow, sourceIdCol, numRows, 1).setNumberFormat('@');
 
   result.added = allNewRows.length;
   return result;
