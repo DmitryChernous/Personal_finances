@@ -201,6 +201,7 @@ function pfSyncRawSheetsToTransactions(ss) {
   // Загрузить существующие ключи дедупликации (Source + SourceId)
   var existingKeys = pfGetExistingTransactionKeys_();
 
+  // Все строки с raw добавляем; при совпадении Source+SourceId с уже существующей — ставим status needs_review и пометку, чтобы пользователь сам решил.
   var allNewRows = [];
   for (var s = 0; s < rawSheets.length; s++) {
     var sheet = rawSheets[s];
@@ -211,11 +212,27 @@ function pfSyncRawSheetsToTransactions(ss) {
       for (var r = 0; r < rows.length; r++) {
         var tx = rows[r];
         var dedupeKey = tx.source + ':' + tx.sourceId;
-        if (existingKeys[dedupeKey]) {
-          result.skipped++;
-          continue;
-        }
+        var isPossibleDuplicate = !!existingKeys[dedupeKey];
         existingKeys[dedupeKey] = true;
+        if (isPossibleDuplicate) {
+          result.skipped++;
+          tx = {
+            date: tx.date,
+            type: tx.type,
+            account: tx.account,
+            accountTo: tx.accountTo,
+            amount: tx.amount,
+            currency: tx.currency,
+            category: tx.category,
+            subcategory: tx.subcategory,
+            merchant: tx.merchant,
+            description: (tx.description || '') + ' [Возможный дубликат — проверьте]',
+            tags: (tx.tags || '') + (tx.tags ? ', ' : '') + 'дубликат?',
+            source: tx.source,
+            sourceId: tx.sourceId,
+            status: 'needs_review'
+          };
+        }
         allNewRows.push(tx);
       }
     } catch (e) {
