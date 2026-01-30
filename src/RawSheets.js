@@ -230,11 +230,6 @@ function pfSyncRawSheetsToTransactions(ss) {
   // Записать новые строки в лист «Транзакции» в порядке колонок PF_TRANSACTIONS_SCHEMA
   var colOrder = ['Date', 'Type', 'Account', 'AccountTo', 'Amount', 'Currency', 'Category', 'Subcategory', 'Merchant', 'Description', 'Tags', 'Source', 'SourceId', 'Status'];
   var numCols = colOrder.length;
-  var lastRow = txSheet.getLastRow();
-  if (lastRow < 1) lastRow = 1;
-  var startRow = lastRow + 1;
-  var endRow = startRow + allNewRows.length - 1;
-
   var values = [];
   for (var i = 0; i < allNewRows.length; i++) {
     var tx = allNewRows[i];
@@ -251,11 +246,23 @@ function pfSyncRawSheetsToTransactions(ss) {
     values.push(row);
   }
 
-  txSheet.getRange(startRow, 1, endRow, numCols).setValues(values);
+  // Запись чанками: размер диапазона всегда равен длине массива, меньше риск ошибки и таймаута
+  var numRows = values.length;
+  var lastRow = txSheet.getLastRow();
+  if (lastRow < 1) lastRow = 1;
+  var startRow = lastRow + 1;
+  var chunkSize = 500;
+  for (var offset = 0; offset < numRows; offset += chunkSize) {
+    var chunk = values.slice(offset, offset + chunkSize);
+    var chunkStart = startRow + offset;
+    var chunkEnd = chunkStart + chunk.length - 1;
+    txSheet.getRange(chunkStart, 1, chunkEnd, numCols).setValues(chunk);
+  }
 
   // Формат даты и суммы
   var dateCol = pfColumnIndex_(PF_TRANSACTIONS_SCHEMA, 'Date');
   var amountCol = pfColumnIndex_(PF_TRANSACTIONS_SCHEMA, 'Amount');
+  var endRow = startRow + numRows - 1;
   if (dateCol) txSheet.getRange(startRow, dateCol, endRow, dateCol).setNumberFormat('dd.mm.yyyy');
   if (amountCol) txSheet.getRange(startRow, amountCol, endRow, amountCol).setNumberFormat('0.00');
 
