@@ -246,7 +246,7 @@ function pfSyncRawSheetsToTransactions(ss) {
     values.push(row);
   }
 
-  // Запись чанками: размер диапазона всегда равен длине массива, меньше риск ошибки и таймаута
+  // Запись чанками. Используем getRange(row, col, numRows, numCols), чтобы размер диапазона точно совпадал с массивом.
   var numRows = values.length;
   var lastRow = txSheet.getLastRow();
   if (lastRow < 1) lastRow = 1;
@@ -254,17 +254,17 @@ function pfSyncRawSheetsToTransactions(ss) {
   var chunkSize = 500;
   for (var offset = 0; offset < numRows; offset += chunkSize) {
     var chunk = values.slice(offset, offset + chunkSize);
-    var chunkStart = startRow + offset;
-    var chunkEnd = chunkStart + chunk.length - 1;
-    txSheet.getRange(chunkStart, 1, chunkEnd, numCols).setValues(chunk);
+    var chunkStartRow = startRow + offset;
+    var numRowsInChunk = chunk.length;
+    var range = txSheet.getRange(chunkStartRow, 1, numRowsInChunk, numCols);
+    range.setValues(chunk);
   }
 
-  // Формат даты и суммы
+  // Формат даты и суммы (getRange(row, col, numRows, numCols) — один столбец)
   var dateCol = pfColumnIndex_(PF_TRANSACTIONS_SCHEMA, 'Date');
   var amountCol = pfColumnIndex_(PF_TRANSACTIONS_SCHEMA, 'Amount');
-  var endRow = startRow + numRows - 1;
-  if (dateCol) txSheet.getRange(startRow, dateCol, endRow, dateCol).setNumberFormat('dd.mm.yyyy');
-  if (amountCol) txSheet.getRange(startRow, amountCol, endRow, amountCol).setNumberFormat('0.00');
+  if (dateCol) txSheet.getRange(startRow, dateCol, numRows, 1).setNumberFormat('dd.mm.yyyy');
+  if (amountCol) txSheet.getRange(startRow, amountCol, numRows, 1).setNumberFormat('0.00');
 
   result.added = allNewRows.length;
   return result;
