@@ -111,14 +111,15 @@ function pfParseRawAmount_(val) {
 var PF_RAW_SOURCE_ID_PREFIX = 'id_';
 
 /**
- * Формирует SourceId для дедупликации: префикс + дата (ddmmyyyy) + время (hhmm) + сумма (целое).
- * Префикс гарантирует, что ячейка хранится как текст, а не как число.
+ * Формирует SourceId для дедупликации: префикс + дата (ddmmyyyy) + время (hhmm) + сумма (целое) + номер строки.
+ * Номер строки (rowIndex) гарантирует уникальность: разные строки raw-листа не дадут один ключ даже при одинаковых дате/времени/сумме.
  * @param {Date|string} dateVal - дата (объект Date или строка dd.mm.yyyy)
  * @param {string|number} timeStr - время HH:mm или доля дня
  * @param {number} amount
+ * @param {number} [rowIndex] - номер строки на raw-листе (1-based; обычно 2, 3, …). Если задан, добавляется к id для уникальности.
  * @returns {string}
  */
-function pfRawSourceId_(dateVal, timeStr, amount) {
+function pfRawSourceId_(dateVal, timeStr, amount, rowIndex) {
   var d;
   if (dateVal instanceof Date && !isNaN(dateVal.getTime())) {
     var day = dateVal.getDate();
@@ -131,7 +132,11 @@ function pfRawSourceId_(dateVal, timeStr, amount) {
   }
   var t = pfNormalizeRawTime_(timeStr || '');
   var a = String(Math.round(amount));
-  return PF_RAW_SOURCE_ID_PREFIX + d + t + a;
+  var base = PF_RAW_SOURCE_ID_PREFIX + d + t + a;
+  if (rowIndex !== undefined && rowIndex !== null && rowIndex > 0) {
+    return base + '_r' + rowIndex;
+  }
+  return base;
 }
 
 /**
@@ -166,7 +171,8 @@ function pfReadRawSheet_(sheet, sheetName, defaultCurrency) {
       ? String(accountVal).trim()
       : sheetName;
 
-    var sourceId = pfRawSourceId_(date, timeStr, parsed.amount);
+    var rowIndexOnSheet = i + 2;
+    var sourceId = pfRawSourceId_(date, timeStr, parsed.amount, rowIndexOnSheet);
 
     result.push({
       date: date,
@@ -211,10 +217,12 @@ function pfSyncRawSheetsToTransactions(ss) {
 
   var defaultCurrency = pfGetSetting_(ss, PF_SETUP_KEYS.DEFAULT_CURRENCY) || 'RUB';
 
-  // Загрузить существующие ключи дедупликации (Source + SourceId)
-  var existingKeys = pfGetExistingTransactionKeys_();
+  // Ключи, которые уже есть на листе «Транзакции» (не меняем в процессе запуска).
+  var existingOnSheet = pfGetExistingTransactionKeys_();
+  // Ключи, добавленные в этом запуске (чтобы не путать «уже на листе» с «повтор в сырых данных»).
+  var addedInThisRun = {};
+  var duplicateCountInRun = {};
 
-  // Все строки с raw добавляем; при совпадении Source+SourceId с уже существующей — ставим status needs_review и пометку, чтобы пользователь сам решил.
   var allNewRows = [];
   for (var s = 0; s < rawSheets.length; s++) {
     var sheet = rawSheets[s];
@@ -225,10 +233,18 @@ function pfSyncRawSheetsToTransactions(ss) {
       for (var r = 0; r < rows.length; r++) {
         var tx = rows[r];
         var dedupeKey = tx.source + ':' + tx.sourceId;
-        var isPossibleDuplicate = !!existingKeys[dedupeKey];
-        existingKeys[dedupeKey] = true;
-        if (isPossibleDuplicate) {
+        var alreadyOnSheet = !!existingOnSheet[dedupeKey];
+        var seenInThisRun = !!addedInThisRun[dedupeKey];
+
+        if (alreadyOnSheet) {
           result.skipped++;
+          continue; // Не добавлять дубликат в лист «Транзакции»
+        }
+        if (seenInThisRun) {
+          // Повтор в сырых данных в этом же запуске — делаем SourceId уникальным и добавляем как обычную строку.
+          var count = (duplicateCountInRun[dedupeKey] || 1) + 1;
+          duplicateCountInRun[dedupeKey] = count;
+          var newSourceId = tx.sourceId + '_' + count;
           tx = {
             date: tx.date,
             type: tx.type,
@@ -239,12 +255,15 @@ function pfSyncRawSheetsToTransactions(ss) {
             category: tx.category,
             subcategory: tx.subcategory,
             merchant: tx.merchant,
-            description: (tx.description || '') + ' [Возможный дубликат — проверьте]',
-            tags: (tx.tags || '') + (tx.tags ? ', ' : '') + 'дубликат?',
+            description: tx.description,
+            tags: tx.tags,
             source: tx.source,
-            sourceId: tx.sourceId,
-            status: 'needs_review'
+            sourceId: newSourceId,
+            status: 'ok'
           };
+          addedInThisRun[tx.source + ':' + newSourceId] = true;
+        } else {
+          addedInThisRun[dedupeKey] = true;
         }
         allNewRows.push(tx);
       }
@@ -291,7 +310,8 @@ function pfSyncRawSheetsToTransactions(ss) {
     range.setValues(chunk);
   }
 
-  // Формат даты, суммы и ID источника (getRange(row, col, numRows, numCols) — один столбец)
+  // Формат даты, суммы и ID источника. getRange(startRow, col, numRows, 1): третий аргумент — число строк.
+  // Формат применяется ко всем добавленным строкам (startRow … startRow + numRows - 1).
   var dateCol = pfColumnIndex_(PF_TRANSACTIONS_SCHEMA, 'Date');
   var amountCol = pfColumnIndex_(PF_TRANSACTIONS_SCHEMA, 'Amount');
   var sourceIdCol = pfColumnIndex_(PF_TRANSACTIONS_SCHEMA, 'SourceId');
