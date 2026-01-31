@@ -14,11 +14,23 @@ function pfInitializeDashboard_(ss) {
   var txSheetName = pfGetTransactionsSheetName_(ss);
   var lang = pfGetLanguage_();
 
+  // Read period before clear: from cell B1 or from Settings.
+  var savedPeriod = null;
+  if (dashboardSheet.getLastRow() >= 1) {
+    var cellVal = dashboardSheet.getRange(1, 2).getValue();
+    if (cellVal !== null && cellVal !== undefined && String(cellVal).trim() !== '') {
+      savedPeriod = String(cellVal).trim();
+    }
+  }
+  if (!savedPeriod) {
+    savedPeriod = pfGetSetting_(ss, PF_SETTINGS_KEYS.DASHBOARD_MONTH);
+    if (savedPeriod) savedPeriod = String(savedPeriod).trim();
+  }
+
   // Clear existing content (but preserve charts if they exist).
   var lastRow = dashboardSheet.getLastRow();
   var lastCol = dashboardSheet.getLastColumn();
   if (lastRow > 0 && lastCol > 0) {
-    // Clear only data, not charts (charts are separate objects).
     dashboardSheet.getRange(1, 1, lastRow, lastCol).clearContent();
     dashboardSheet.getRange(1, 1, lastRow, lastCol).clearFormat();
   }
@@ -29,51 +41,67 @@ function pfInitializeDashboard_(ss) {
     dashboardSheet.removeChart(charts[i]);
   }
 
-  var row = 1;
+  // Resolve period: YYYY-MM or current month.
+  var today = new Date();
+  var currentMonthStr = today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0');
+  var periodYYYYMM = (savedPeriod && /^\d{4}-\d{2}$/.test(savedPeriod)) ? savedPeriod : currentMonthStr;
+  var periodYear = parseInt(periodYYYYMM.substring(0, 4), 10);
+  var periodMonth = parseInt(periodYYYYMM.substring(5, 7), 10);
+  pfSetSetting_(ss, PF_SETTINGS_KEYS.DASHBOARD_MONTH, periodYYYYMM);
 
-  // Section 1: KPI Cards (Current Month).
+  // Row 1: Period selector (dropdown list = last 24 months).
+  dashboardSheet.getRange(1, 1).setValue(pfT_('dashboard.period'));
+  dashboardSheet.getRange(1, 1).setFontWeight('bold');
+  dashboardSheet.getRange(1, 2).setValue(periodYYYYMM);
+  var monthList = [];
+  var d = new Date();
+  for (var m = 0; m < 24; m++) {
+    var y = d.getFullYear();
+    var mo = d.getMonth() + 1;
+    monthList.push([y + '-' + String(mo).padStart(2, '0')]);
+    d.setMonth(d.getMonth() - 1);
+  }
+  dashboardSheet.getRange(1, 27, 24, 27).setValues(monthList);
+  var validation = SpreadsheetApp.newDataValidation().requireValueInRange(dashboardSheet.getRange(1, 27, 24, 27), true).build();
+  dashboardSheet.getRange(1, 2).setDataValidation(validation);
+
+  var row = 2;
+
+  // Section 1: KPI Cards (selected period).
+  var periodLabel = (periodYYYYMM === currentMonthStr) ? pfT_('dashboard.period_current_month') : periodYYYYMM;
+  var kpiTitle = pfT_('dashboard.key_metrics_period') + ' (' + periodLabel + ')';
+  dashboardSheet.getRange(row, 1).setValue(kpiTitle);
   if (lang === 'en') {
-    dashboardSheet.getRange(row, 1).setValue('Key Metrics (Current Month)');
     dashboardSheet.getRange(row + 1, 1).setValue('Income');
     dashboardSheet.getRange(row + 1, 2).setValue('Expenses');
     dashboardSheet.getRange(row + 1, 3).setValue('Net');
     dashboardSheet.getRange(row + 1, 4).setValue('Avg Daily Expense');
   } else {
-    dashboardSheet.getRange(row, 1).setValue('Ключевые показатели (текущий месяц)');
     dashboardSheet.getRange(row + 1, 1).setValue('Доходы');
     dashboardSheet.getRange(row + 1, 2).setValue('Расходы');
     dashboardSheet.getRange(row + 1, 3).setValue('Итого');
     dashboardSheet.getRange(row + 1, 4).setValue('Средний расход в день');
   }
 
-  // KPI formulas (reuse logic from Reports).
+  var monthStartFormula = 'DATE(' + periodYear + ';' + periodMonth + ';1)';
+  var monthEndFormula = 'EOMONTH(DATE(' + periodYear + ';' + periodMonth + ';1);0)';
+
   var dateCol = pfColumnLetter_(PF_TRANSACTIONS_SCHEMA, 'Date');
   var amountCol = pfColumnLetter_(PF_TRANSACTIONS_SCHEMA, 'Amount');
   var typeCol = pfColumnLetter_(PF_TRANSACTIONS_SCHEMA, 'Type');
   var statusCol = pfColumnLetter_(PF_TRANSACTIONS_SCHEMA, 'Status');
 
   if (amountCol && typeCol && statusCol && dateCol) {
-    var monthStart = 'DATE(YEAR(TODAY());MONTH(TODAY());1)';
-    var monthEnd = 'EOMONTH(TODAY();0)';
-    
-    // Income.
-    var incomeFormula = '=SUMIFS(\'' + txSheetName + '\'!' + amountCol + '2:' + amountCol + ';\'' + txSheetName + '\'!' + typeCol + '2:' + typeCol + ';"income";\'' + txSheetName + '\'!' + statusCol + '2:' + statusCol + ';"ok";\'' + txSheetName + '\'!' + dateCol + '2:' + dateCol + ';">="&' + monthStart + ';\'' + txSheetName + '\'!' + dateCol + '2:' + dateCol + ';"<="&' + monthEnd + ')';
-    
-    // Expenses.
-    var expenseFormula = '=SUMIFS(\'' + txSheetName + '\'!' + amountCol + '2:' + amountCol + ';\'' + txSheetName + '\'!' + typeCol + '2:' + typeCol + ';"expense";\'' + txSheetName + '\'!' + statusCol + '2:' + statusCol + ';"ok";\'' + txSheetName + '\'!' + dateCol + '2:' + dateCol + ';">="&' + monthStart + ';\'' + txSheetName + '\'!' + dateCol + '2:' + dateCol + ';"<="&' + monthEnd + ')';
-    
-    // Net (Income - Expenses). Reference data row (row + 2), not header row (row + 1).
+    var incomeFormula = '=SUMIFS(\'' + txSheetName + '\'!' + amountCol + '2:' + amountCol + ';\'' + txSheetName + '\'!' + typeCol + '2:' + typeCol + ';"income";\'' + txSheetName + '\'!' + statusCol + '2:' + statusCol + ';"ok";\'' + txSheetName + '\'!' + dateCol + '2:' + dateCol + ';">="&' + monthStartFormula + ';\'' + txSheetName + '\'!' + dateCol + '2:' + dateCol + ';"<="&' + monthEndFormula + ')';
+    var expenseFormula = '=SUMIFS(\'' + txSheetName + '\'!' + amountCol + '2:' + amountCol + ';\'' + txSheetName + '\'!' + typeCol + '2:' + typeCol + ';"expense";\'' + txSheetName + '\'!' + statusCol + '2:' + statusCol + ';"ok";\'' + txSheetName + '\'!' + dateCol + '2:' + dateCol + ';">="&' + monthStartFormula + ';\'' + txSheetName + '\'!' + dateCol + '2:' + dateCol + ';"<="&' + monthEndFormula + ')';
     var netFormula = '=' + dashboardSheet.getRange(row + 2, 1).getA1Notation() + '-' + dashboardSheet.getRange(row + 2, 2).getA1Notation();
-    
-    // Average daily expense (expenses / days in month). Reference data row (row + 2), not header row (row + 1).
-    var avgDailyFormula = '=' + dashboardSheet.getRange(row + 2, 2).getA1Notation() + '/DAY(EOMONTH(TODAY();0))';
+    var avgDailyFormula = '=' + dashboardSheet.getRange(row + 2, 2).getA1Notation() + '/DAY(' + monthEndFormula + ')';
 
     dashboardSheet.getRange(row + 2, 1).setFormula(incomeFormula);
     dashboardSheet.getRange(row + 2, 2).setFormula(expenseFormula);
     dashboardSheet.getRange(row + 2, 3).setFormula(netFormula);
     dashboardSheet.getRange(row + 2, 4).setFormula(avgDailyFormula);
 
-    // Format KPI values.
     var kpiRange = dashboardSheet.getRange(row + 2, 1, 1, 4);
     kpiRange.setNumberFormat('#,##0.00');
     kpiRange.setFontSize(14);
@@ -82,28 +110,42 @@ function pfInitializeDashboard_(ss) {
 
   row += 4;
 
-  // Section 2: Budget KPI and Exceeded Budgets.
+  // Section: Account balances (same logic as Reports).
+  var balanceData = pfGetAccountBalanceRows_(ss);
+  if (balanceData.rows.length > 0) {
+    dashboardSheet.getRange(row, 1).setValue(pfT_('dashboard.account_balances'));
+    dashboardSheet.getRange(row, 1).setFontSize(14).setFontWeight('bold');
+    row++;
+    dashboardSheet.getRange(row, 1).setValue(lang === 'en' ? 'Account' : 'Счет');
+    dashboardSheet.getRange(row, 2).setValue(lang === 'en' ? 'Balance' : 'Остаток');
+    dashboardSheet.getRange(row, 1, row, 2).setFontWeight('bold');
+    row++;
+    for (var b = 0; b < balanceData.rows.length; b++) {
+      dashboardSheet.getRange(row + b, 1).setValue(balanceData.rows[b].accountName);
+      dashboardSheet.getRange(row + b, 2).setFormula(balanceData.rows[b].formula);
+    }
+    dashboardSheet.getRange(row, 2, row + balanceData.rows.length - 1, 2).setNumberFormat('#,##0.00');
+    row += balanceData.rows.length + 1;
+  }
+
+  // Section 2: Budget KPI and Exceeded Budgets (for selected period).
   var budgetsSheet = pfFindSheetByKey_(ss, PF_SHEET_KEYS.BUDGETS);
   if (budgetsSheet) {
-    // Update budget calculations first to ensure data is current
     try {
       pfUpdateBudgetCalculations_(ss);
     } catch (e) {
       pfLogWarning_('Error updating budgets in Dashboard: ' + e.toString(), 'pfInitializeDashboard_');
     }
 
-    // Get current month
-    var today = new Date();
-    var currentMonth = today.getFullYear() + '-' + 
-      String(today.getMonth() + 1).padStart(2, '0');
+    var currentMonth = periodYYYYMM;
 
     // Budget KPI section
     if (lang === 'en') {
-      dashboardSheet.getRange(row, 1).setValue('Budget Metrics (Current Month)');
+      dashboardSheet.getRange(row, 1).setValue('Budget Metrics (' + (periodYYYYMM === currentMonthStr ? 'Current Month' : periodYYYYMM) + ')');
       dashboardSheet.getRange(row + 1, 1).setValue('Exceeded Budgets');
       dashboardSheet.getRange(row + 1, 2).setValue('Avg % Used');
     } else {
-      dashboardSheet.getRange(row, 1).setValue('Показатели бюджетов (текущий месяц)');
+      dashboardSheet.getRange(row, 1).setValue('Показатели бюджетов (' + (periodYYYYMM === currentMonthStr ? 'текущий месяц' : periodYYYYMM) + ')');
       dashboardSheet.getRange(row + 1, 1).setValue('Бюджетов превышено');
       dashboardSheet.getRange(row + 1, 2).setValue('Средний % использования');
     }
@@ -272,8 +314,8 @@ function pfInitializeDashboard_(ss) {
       }
       
       var today = new Date();
-      var monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
-      var monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+      var monthStart = new Date(periodYear, periodMonth - 1, 1);
+      var monthEnd = new Date(periodYear, periodMonth, 0);
       
       // Use cached lastRow
       var data = txSheet.getRange(2, 1, lastRow - 1, PF_TRANSACTIONS_SCHEMA.columns.length).getValues();
@@ -570,9 +612,8 @@ function pfInitializeDashboard_(ss) {
 
   // Calculate average expenses by day of week for current month
   if (txSheet && txSheet.getLastRow() > 1) {
-    var today = new Date();
-    var monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
-    var monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+    var monthStart = new Date(periodYear, periodMonth - 1, 1);
+    var monthEnd = new Date(periodYear, periodMonth, 0);
     
     // Get column indices
     var dateColIdx = pfColumnIndex_(PF_TRANSACTIONS_SCHEMA, 'Date');

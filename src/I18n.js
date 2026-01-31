@@ -132,6 +132,14 @@ var PF_I18N = {
     import: {
       duplicate_note: 'Дубликат. Ключ: ',
       duplicate_hint: 'Используйте меню "Personal finances → Найти дубликат" для поиска оригинала.'
+    },
+    dashboard: {
+      account_balances: 'Остатки по счетам',
+      account_balances_detail: 'Подробнее в Отчётах',
+      period: 'Период',
+      period_current_month: 'Текущий месяц',
+      key_metrics: 'Ключевые показатели (текущий месяц)',
+      key_metrics_period: 'Ключевые показатели'
     }
   },
   en: {
@@ -239,6 +247,14 @@ var PF_I18N = {
     import: {
       duplicate_note: 'Duplicate. Key: ',
       duplicate_hint: 'Use menu "Personal finances → Find duplicate" to find the original.'
+    },
+    dashboard: {
+      account_balances: 'Account balances',
+      account_balances_detail: 'See Reports for details',
+      period: 'Period',
+      period_current_month: 'Current month',
+      key_metrics: 'Key Metrics (Current Month)',
+      key_metrics_period: 'Key Metrics'
     },
     rule_apply_to: {
       merchant: 'Merchant only',

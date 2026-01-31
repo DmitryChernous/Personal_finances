@@ -36,6 +36,73 @@ function pfColumnLetter_(schema, key) {
 }
 
 /**
+ * Returns account balance rows for Reports and Dashboard.
+ * Logic: initial balance + income - expenses - transfers out + transfers in (same as Reports section 7).
+ * @param {GoogleAppsScript.Spreadsheet.Spreadsheet} ss
+ * @returns {{ rows: Array<{ accountName: string, formula: string }> }}
+ */
+function pfGetAccountBalanceRows_(ss) {
+  var result = { rows: [] };
+  var txSheetName = pfGetTransactionsSheetName_(ss);
+  var accountCol = pfColumnLetter_(PF_TRANSACTIONS_SCHEMA, 'Account');
+  var amountCol = pfColumnLetter_(PF_TRANSACTIONS_SCHEMA, 'Amount');
+  var typeCol = pfColumnLetter_(PF_TRANSACTIONS_SCHEMA, 'Type');
+  var statusCol = pfColumnLetter_(PF_TRANSACTIONS_SCHEMA, 'Status');
+  var accountToCol = pfColumnLetter_(PF_TRANSACTIONS_SCHEMA, 'AccountTo');
+  if (!accountCol || !amountCol || !typeCol || !statusCol) return result;
+
+  var accountsSheet = pfFindSheetByKey_(ss, PF_SHEET_KEYS.ACCOUNTS);
+  if (!accountsSheet || accountsSheet.getLastRow() <= 1) return result;
+
+  var accountsDataRange = accountsSheet.getRange(2, 1, accountsSheet.getLastRow() - 1, PF_ACCOUNTS_SCHEMA.columns.length);
+  var accountsData = accountsDataRange.getValues();
+  var accountNameColIdx = pfColumnIndex_(PF_ACCOUNTS_SCHEMA, 'Account');
+  var initialBalanceColIdx = pfColumnIndex_(PF_ACCOUNTS_SCHEMA, 'InitialBalance');
+  if (!accountNameColIdx || !initialBalanceColIdx) return result;
+
+  var accountNameIdx = accountNameColIdx - 1;
+  var initialBalanceIdx = initialBalanceColIdx - 1;
+  var initialBalances = {};
+  for (var i = 0; i < accountsData.length; i++) {
+    if (accountsData[i].length <= accountNameIdx || accountsData[i].length <= initialBalanceIdx) continue;
+    var accountName = accountsData[i][accountNameIdx];
+    if (!accountName || String(accountName).trim() === '') continue;
+    var initialBalance = accountsData[i][initialBalanceIdx];
+    var balanceNum = 0;
+    if (initialBalance !== null && initialBalance !== undefined && initialBalance !== '') {
+      var parsed = Number(initialBalance);
+      if (!isNaN(parsed)) balanceNum = parsed;
+    }
+    initialBalances[String(accountName).trim()] = balanceNum;
+  }
+
+  var accountCount = 0;
+  for (var accountName in initialBalances) {
+    if (accountCount >= 20) break;
+    var initialBalanceValue = initialBalances[accountName];
+    if (isNaN(initialBalanceValue) || initialBalanceValue === null || initialBalanceValue === undefined) {
+      initialBalanceValue = 0;
+    }
+    var incomePart = 'SUMIFS(\'' + txSheetName + '\'!' + amountCol + '2:' + amountCol + ';\'' + txSheetName + '\'!' + accountCol + '2:' + accountCol + ';"' + accountName.replace(/"/g, '""') + '";\'' + txSheetName + '\'!' + typeCol + '2:' + typeCol + ';"income";\'' + txSheetName + '\'!' + statusCol + '2:' + statusCol + ';"ok")';
+    var expensePart = 'SUMIFS(\'' + txSheetName + '\'!' + amountCol + '2:' + amountCol + ';\'' + txSheetName + '\'!' + accountCol + '2:' + accountCol + ';"' + accountName.replace(/"/g, '""') + '";\'' + txSheetName + '\'!' + typeCol + '2:' + typeCol + ';"expense";\'' + txSheetName + '\'!' + statusCol + '2:' + statusCol + ';"ok")';
+    var transfersOutPart = '';
+    if (accountToCol) {
+      transfersOutPart = 'SUMIFS(\'' + txSheetName + '\'!' + amountCol + '2:' + amountCol + ';\'' + txSheetName + '\'!' + accountCol + '2:' + accountCol + ';"' + accountName.replace(/"/g, '""') + '";\'' + txSheetName + '\'!' + typeCol + '2:' + typeCol + ';"transfer";\'' + txSheetName + '\'!' + statusCol + '2:' + statusCol + ';"ok")';
+    }
+    var transfersInPart = '';
+    if (accountToCol) {
+      transfersInPart = 'SUMIFS(\'' + txSheetName + '\'!' + amountCol + '2:' + amountCol + ';\'' + txSheetName + '\'!' + accountToCol + '2:' + accountToCol + ';"' + accountName.replace(/"/g, '""') + '";\'' + txSheetName + '\'!' + typeCol + '2:' + typeCol + ';"transfer";\'' + txSheetName + '\'!' + statusCol + '2:' + statusCol + ';"ok")';
+    }
+    var formula = '=' + initialBalanceValue + '+' + incomePart + '-' + expensePart;
+    if (transfersOutPart) formula += '-' + transfersOutPart;
+    if (transfersInPart) formula += '+' + transfersInPart;
+    result.rows.push({ accountName: accountName, formula: formula });
+    accountCount++;
+  }
+  return result;
+}
+
+/**
  * Initializes or updates the Reports sheet with formulas.
  * @param {GoogleAppsScript.Spreadsheet.Spreadsheet} ss
  */
@@ -730,7 +797,8 @@ function pfInitializeReports_(ss) {
 
   row += 6; // Leave space for forecast + header.
 
-  // Section 7: Account balances (if we track balances).
+  // Section 7: Account balances (shared logic via pfGetAccountBalanceRows_).
+  var balanceData = pfGetAccountBalanceRows_(ss);
   if (lang === 'en') {
     reportsSheet.getRange(row, 1).setValue('Account Balances');
     reportsSheet.getRange(row + 1, 1).setValue('Account');
@@ -740,101 +808,9 @@ function pfInitializeReports_(ss) {
     reportsSheet.getRange(row + 1, 1).setValue('Счет');
     reportsSheet.getRange(row + 1, 2).setValue('Остаток');
   }
-
-  // Account balances calculation:
-  // 1. Get initial balance from Accounts sheet
-  // 2. Sum all income/expense transactions for that account
-  // 3. Handle transfers (subtract from source, add to destination)
-  if (accountCol && amountCol && typeCol && statusCol) {
-    var accountsSheet = pfFindSheetByKey_(ss, PF_SHEET_KEYS.ACCOUNTS);
-    if (accountsSheet && accountsSheet.getLastRow() > 1) {
-      // Get accounts with initial balances.
-      var accountsDataRange = accountsSheet.getRange(2, 1, accountsSheet.getLastRow() - 1, PF_ACCOUNTS_SCHEMA.columns.length);
-      var accountsData = accountsDataRange.getValues();
-      
-      // Get column indices (1-based), then convert to 0-based.
-      var accountNameColIdx = pfColumnIndex_(PF_ACCOUNTS_SCHEMA, 'Account');
-      var initialBalanceColIdx = pfColumnIndex_(PF_ACCOUNTS_SCHEMA, 'InitialBalance');
-      var accountToCol = pfColumnLetter_(PF_TRANSACTIONS_SCHEMA, 'AccountTo');
-      
-      // Check if column indices are valid.
-      if (accountNameColIdx && initialBalanceColIdx) {
-      
-      var accountNameIdx = accountNameColIdx - 1; // Convert to 0-based
-      var initialBalanceIdx = initialBalanceColIdx - 1; // Convert to 0-based
-      
-      // Build a map of account names to initial balances.
-      var initialBalances = {};
-      for (var i = 0; i < accountsData.length; i++) {
-        // Check if row has enough columns.
-        if (accountsData[i].length <= accountNameIdx || accountsData[i].length <= initialBalanceIdx) {
-          continue;
-        }
-        
-        var accountName = accountsData[i][accountNameIdx];
-        if (!accountName || String(accountName).trim() === '') continue;
-        
-        var initialBalance = accountsData[i][initialBalanceIdx];
-        // Safely convert to number.
-        var balanceNum = 0;
-        if (initialBalance !== null && initialBalance !== undefined && initialBalance !== '') {
-          var parsed = Number(initialBalance);
-          if (!isNaN(parsed)) {
-            balanceNum = parsed;
-          }
-        }
-        initialBalances[String(accountName).trim()] = balanceNum;
-      }
-      
-      // For each account, calculate balance using formula:
-      // Balance = InitialBalance + SUMIFS(income) - SUMIFS(expenses) 
-      //         - SUMIFS(transfers from this account) + SUMIFS(transfers to this account)
-      var balanceRow = row + 2;
-      var accountCount = 0;
-      for (var accountName in initialBalances) {
-        if (accountCount >= 20) break; // Limit to 20 accounts.
-        
-        reportsSheet.getRange(balanceRow, 1).setValue(accountName);
-        
-        // Get initial balance value (or 0 if not set).
-        var initialBalanceValue = initialBalances[accountName];
-        if (isNaN(initialBalanceValue) || initialBalanceValue === null || initialBalanceValue === undefined) {
-          initialBalanceValue = 0;
-        }
-        
-        // Income: SUMIFS for income transactions.
-        var incomePart = 'SUMIFS(\'' + txSheetName + '\'!' + amountCol + '2:' + amountCol + ';\'' + txSheetName + '\'!' + accountCol + '2:' + accountCol + ';"' + accountName + '";\'' + txSheetName + '\'!' + typeCol + '2:' + typeCol + ';"income";\'' + txSheetName + '\'!' + statusCol + '2:' + statusCol + ';"ok")';
-        
-        // Expenses: SUMIFS for expense transactions.
-        var expensePart = 'SUMIFS(\'' + txSheetName + '\'!' + amountCol + '2:' + amountCol + ';\'' + txSheetName + '\'!' + accountCol + '2:' + accountCol + ';"' + accountName + '";\'' + txSheetName + '\'!' + typeCol + '2:' + typeCol + ';"expense";\'' + txSheetName + '\'!' + statusCol + '2:' + statusCol + ';"ok")';
-        
-        // Transfers out: subtract when this account is the source.
-        var transfersOutPart = '';
-        if (accountToCol) {
-          transfersOutPart = 'SUMIFS(\'' + txSheetName + '\'!' + amountCol + '2:' + amountCol + ';\'' + txSheetName + '\'!' + accountCol + '2:' + accountCol + ';"' + accountName + '";\'' + txSheetName + '\'!' + typeCol + '2:' + typeCol + ';"transfer";\'' + txSheetName + '\'!' + statusCol + '2:' + statusCol + ';"ok")';
-        }
-        
-        // Transfers in: add when this account is the destination.
-        var transfersInPart = '';
-        if (accountToCol) {
-          transfersInPart = 'SUMIFS(\'' + txSheetName + '\'!' + amountCol + '2:' + amountCol + ';\'' + txSheetName + '\'!' + accountToCol + '2:' + accountToCol + ';"' + accountName + '";\'' + txSheetName + '\'!' + typeCol + '2:' + typeCol + ';"transfer";\'' + txSheetName + '\'!' + statusCol + '2:' + statusCol + ';"ok")';
-        }
-        
-        // Build final formula: InitialBalance + Income - Expenses - TransfersOut + TransfersIn
-        var accountBalanceFormula = '=' + initialBalanceValue + '+' + incomePart + '-' + expensePart;
-        if (transfersOutPart) {
-          accountBalanceFormula += '-' + transfersOutPart;
-        }
-        if (transfersInPart) {
-          accountBalanceFormula += '+' + transfersInPart;
-        }
-        
-        reportsSheet.getRange(balanceRow, 2).setFormula(accountBalanceFormula);
-        balanceRow++;
-        accountCount++;
-      }
-      } // Close if (accountNameColIdx && initialBalanceColIdx)
-    }
+  for (var b = 0; b < balanceData.rows.length; b++) {
+    reportsSheet.getRange(row + 2 + b, 1).setValue(balanceData.rows[b].accountName);
+    reportsSheet.getRange(row + 2 + b, 2).setFormula(balanceData.rows[b].formula);
   }
 
   // Format number columns.

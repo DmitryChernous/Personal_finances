@@ -6,7 +6,8 @@
  */
 
 var PF_SETTINGS_KEYS = {
-  LANGUAGE: 'Language'
+  LANGUAGE: 'Language',
+  DASHBOARD_MONTH: 'DashboardMonth'
 };
 
 /**
