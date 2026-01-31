@@ -27,7 +27,7 @@ function onOpen() {
   menu.addItem(pfT_('menu.generate_test_data'), 'pfGenerateTestData');
   menu.addItem(pfT_('menu.create_template'), 'pfCreateTemplate');
   menu.addSeparator();
-  menu.addItem('Запустить тесты', 'pfRunAllTests');
+  menu.addItem(pfT_('menu.run_tests'), 'pfRunAllTests');
 
   menu
     .addSubMenu(

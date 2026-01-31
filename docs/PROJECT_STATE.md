@@ -404,8 +404,7 @@
    - Использование ErrorHandler для единообразных ошибок
 
 7. **#1, #2 - Мертвый код** ✅
-   - `pfProcessFileImport_()` и `pfProcessImportData_()` помечены как deprecated
-   - Функции заменены на простые `throw new Error()` с объяснением
+   - `pfProcessFileImport_()` и `pfProcessImportData_()` удалены в рамках рефакторинга (DEVELOPER_TASKS, задача 3)
 
 8. **#3 - Хардкод в меню** ✅
    - Добавлена i18n поддержка для "Найти дубликат"

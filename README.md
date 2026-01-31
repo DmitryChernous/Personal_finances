@@ -20,6 +20,7 @@
   - `appsscript.json` — манифест
   - `Code.js` — меню/точка входа
   - `Sheets.js` — утилиты для работы с листами
+- Обзор структуры и зависимостей кода для разработки: [docs/ARCHITECTURE_AND_DEPS.md](docs/ARCHITECTURE_AND_DEPS.md)
 - `.clasp.json` — локальная привязка к Script ID (в `.gitignore`)
 - `.clasp.json.example` — шаблон
 
@@ -100,6 +101,10 @@ npx clasp create --parentId "<SHEET_ID>" --title "Personal finances" --rootDir s
 
 После `push` открой таблицу → обнови страницу.
 В меню появится пункт **Personal finances** → **Setup (создать листы)**.
+
+## Запуск тестов
+
+В таблице: **Personal finances → Запустить тесты** (или **Run tests** при английском языке). Результаты юнит-тестов (константы, дедупликация, RawSheets-парсинг, валидация и др.) отобразятся в диалоге. Ручной чеклист сценариев — в [docs/TESTING_CHECKLIST.md](docs/TESTING_CHECKLIST.md).
 
 ## Troubleshooting
 

@@ -232,7 +232,7 @@ function pfSyncRawSheetsToTransactions(ss) {
       result.sheetsProcessed++;
       for (var r = 0; r < rows.length; r++) {
         var tx = rows[r];
-        var dedupeKey = tx.source + ':' + tx.sourceId;
+        var dedupeKey = pfCanonicalDedupeKey_(tx);
         var alreadyOnSheet = !!existingOnSheet[dedupeKey];
         var seenInThisRun = !!addedInThisRun[dedupeKey];
 
@@ -261,7 +261,7 @@ function pfSyncRawSheetsToTransactions(ss) {
             sourceId: newSourceId,
             status: 'ok'
           };
-          addedInThisRun[tx.source + ':' + newSourceId] = true;
+          addedInThisRun[pfCanonicalDedupeKey_(tx)] = true;
         } else {
           addedInThisRun[dedupeKey] = true;
         }

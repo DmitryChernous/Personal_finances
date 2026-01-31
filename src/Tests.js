@@ -28,6 +28,9 @@ function pfRunAllTests() {
   // Test Input Validation
   results.push(testInputValidation());
   
+  // Test RawSheets parsing and SourceId
+  results.push(testRawSheetsParsingAndSourceId());
+  
   // Count results
   for (var i = 0; i < results.length; i++) {
     if (results[i].passed) {
@@ -392,6 +395,66 @@ function testInputValidation() {
   
   return {
     name: 'Input Validation',
+    passed: errors.length === 0,
+    count: 1,
+    errors: errors
+  };
+}
+
+/**
+ * Test RawSheets parsing (date, time, amount) and SourceId formation.
+ * Deduplication scenario (existing key -> skipped, not added) is covered by manual checklist (TESTING_CHECKLIST.md).
+ */
+function testRawSheetsParsingAndSourceId() {
+  var errors = [];
+
+  try {
+    // pfParseRawDate_: string dd.mm.yyyy -> Date; invalid -> null; Date -> same Date
+    var d1 = pfParseRawDate_('31.12.2025');
+    if (!d1 || !(d1 instanceof Date)) errors.push('pfParseRawDate_("31.12.2025") should return Date');
+    else if (d1.getDate() !== 31 || d1.getMonth() !== 11 || d1.getFullYear() !== 2025) {
+      errors.push('pfParseRawDate_("31.12.2025") wrong date: ' + d1.toISOString());
+    }
+    if (pfParseRawDate_(null) !== null) errors.push('pfParseRawDate_(null) should return null');
+    if (pfParseRawDate_('invalid') !== null) errors.push('pfParseRawDate_("invalid") should return null');
+    var dObj = new Date(2025, 0, 15);
+    var dSame = pfParseRawDate_(dObj);
+    if (dSame !== dObj) errors.push('pfParseRawDate_(Date) should return same Date');
+
+    // pfNormalizeRawTime_: "16:40" -> "1640"; number (fraction of day) -> hhmm; null -> "0000"
+    if (pfNormalizeRawTime_('16:40') !== '1640') errors.push('pfNormalizeRawTime_("16:40") expected "1640", got ' + pfNormalizeRawTime_('16:40'));
+    if (pfNormalizeRawTime_(null) !== '0000') errors.push('pfNormalizeRawTime_(null) expected "0000"');
+    if (pfNormalizeRawTime_(undefined) !== '0000') errors.push('pfNormalizeRawTime_(undefined) expected "0000"');
+    // 0.5 = noon = 12:00
+    var tNoon = pfNormalizeRawTime_(0.5);
+    if (tNoon !== '1200') errors.push('pfNormalizeRawTime_(0.5) expected "1200", got ' + tNoon);
+
+    // pfParseRawAmount_: negative -> expense, positive -> income, amount by abs
+    var p1 = pfParseRawAmount_(-1500);
+    if (!p1 || p1.amount !== 1500 || p1.type !== 'expense') errors.push('pfParseRawAmount_(-1500) expected {amount:1500, type:expense}');
+    var p2 = pfParseRawAmount_(1000);
+    if (!p2 || p2.amount !== 1000 || p2.type !== 'income') errors.push('pfParseRawAmount_(1000) expected {amount:1000, type:income}');
+    if (pfParseRawAmount_(null) !== null) errors.push('pfParseRawAmount_(null) should return null');
+
+    // pfRawSourceId_: same inputs -> same output; with rowIndex -> contains _r
+    var sid1 = pfRawSourceId_(d1, '1640', 1500, 2);
+    var sid2 = pfRawSourceId_(d1, '1640', 1500, 2);
+    if (sid1 !== sid2) errors.push('pfRawSourceId_ same args should give same result');
+    if (sid1.indexOf('_r2') === -1) errors.push('pfRawSourceId_ with rowIndex 2 should contain _r2');
+    var sidNoRow = pfRawSourceId_(d1, '1640', 1500);
+    if (sidNoRow.indexOf('_r') !== -1) errors.push('pfRawSourceId_ without rowIndex should not contain _r');
+
+    // pfCanonicalDedupeKey_(tx): RawSheets tx format -> key equals source + ':' + sourceId
+    var tx = { source: 'raw:raw_sber_card', sourceId: 'id_3112202516401500_r2', date: d1, account: 'card', amount: 1500, type: 'expense' };
+    var key = pfCanonicalDedupeKey_(tx);
+    if (key !== tx.source + ':' + tx.sourceId) errors.push('pfCanonicalDedupeKey_(tx) expected "' + tx.source + ':' + tx.sourceId + '", got ' + key);
+  } catch (e) {
+    errors.push('Exception in testRawSheetsParsingAndSourceId: ' + e.toString());
+    Logger.log('Test error: ' + e.toString());
+  }
+
+  return {
+    name: 'RawSheets Parsing and SourceId',
     passed: errors.length === 0,
     count: 1,
     errors: errors

@@ -101,6 +101,26 @@ function _writeHelpContentRu_(sheet) {
   sheet.getRange(row, 1).setValue('• Дедупликация работает по SourceId (если есть) или по хэшу ключевых полей (дата, счет, сумма, тип).');
   row += 2;
   
+  // Как добавить новый счёт (raw-лист)
+  sheet.getRange(row, 1).setValue('Как добавить новый счёт (raw-лист)');
+  sheet.getRange(row, 1).setFontSize(14).setFontWeight('bold');
+  row++;
+  sheet.getRange(row, 1).setValue('Имя листа должно начинаться с raw (например, raw_Сбербанк, raw_Яндекс Карта). Один лист = один счёт.');
+  row++;
+  sheet.getRange(row, 1).setValue('В первой строке — заголовки по порядку: ДАТА, ВРЕМЯ, КАТЕГОРИЯ, ОПИСАНИЕ, СУММА, ОСТАТОК СРЕДСТВ, СЧЕТ. См. docs/RAW_SHEETS_ARCHITECTURE.md, п. 3.2.');
+  row++;
+  sheet.getRange(row, 1).setValue('Формат: дата dd.mm.yyyy, сумма — число (минус = расход, плюс = доход). Если колонка СЧЕТ пустая, подставится имя листа.');
+  row++;
+  sheet.getRange(row, 1).setValue('Пример строк данных:');
+  sheet.getRange(row, 1).setFontWeight('bold');
+  row++;
+  sheet.getRange(row, 1).setValue('31.12.2025  16:40  Перевод СБП  Перевод для Ч.  -1500  10000  ');
+  row++;
+  sheet.getRange(row, 1).setValue('31.12.2025  12:44  Здоровье  YUG-FARM Shakhty  -740  9250  ');
+  row++;
+  sheet.getRange(row, 1).setValue('Порядок действий: создайте лист с именем raw_… → вставьте заголовки → заполните данные → меню "Personal finances → Синхронизировать с raw-листами".');
+  row += 2;
+  
   // FAQ
   sheet.getRange(row, 1).setValue('Часто задаваемые вопросы (FAQ)');
   sheet.getRange(row, 1).setFontSize(14).setFontWeight('bold');
@@ -264,6 +284,26 @@ function _writeHelpContentEn_(sheet) {
   sheet.getRange(row, 1).setValue('• To find a duplicate, use menu "Personal finances → Find duplicate (by key)".');
   row++;
   sheet.getRange(row, 1).setValue('• Deduplication works by SourceId (if available) or by hash of key fields (date, account, amount, type).');
+  row += 2;
+  
+  // How to add new account (raw sheet)
+  sheet.getRange(row, 1).setValue('How to add a new account (raw sheet)');
+  sheet.getRange(row, 1).setFontSize(14).setFontWeight('bold');
+  row++;
+  sheet.getRange(row, 1).setValue('Sheet name must start with raw (e.g. raw_Sberbank, raw_Yandex Card). One sheet = one account.');
+  row++;
+  sheet.getRange(row, 1).setValue('First row: headers in order — DATE, TIME, CATEGORY, DESCRIPTION, AMOUNT, BALANCE, ACCOUNT. See docs/RAW_SHEETS_ARCHITECTURE.md, § 3.2.');
+  row++;
+  sheet.getRange(row, 1).setValue('Format: date dd.mm.yyyy, amount as number (negative = expense, positive = income). If ACCOUNT column is empty, sheet name is used.');
+  row++;
+  sheet.getRange(row, 1).setValue('Example data rows:');
+  sheet.getRange(row, 1).setFontWeight('bold');
+  row++;
+  sheet.getRange(row, 1).setValue('31.12.2025  16:40  SBP Transfer  Transfer for Ch.  -1500  10000  ');
+  row++;
+  sheet.getRange(row, 1).setValue('31.12.2025  12:44  Health  YUG-FARM Shakhty  -740  9250  ');
+  row++;
+  sheet.getRange(row, 1).setValue('Steps: create a sheet named raw_… → add headers → fill data → menu "Personal finances → Sync from raw sheets".');
   row += 2;
   
   // FAQ

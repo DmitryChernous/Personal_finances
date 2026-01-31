@@ -69,9 +69,34 @@ var PF_IMPORTER_INTERFACE = {
 };
 
 /**
+ * Каноническая функция формирования ключа дедупликации.
+ * Raw и Import должны использовать её для согласованности (см. TRANSACTIONS_SCHEMA.md, RAW_SHEETS_ARCHITECTURE.md).
+ * @param {Object} tx - Объект транзакции с полями source, sourceId [, date, account, amount, type для fallback]
+ * @returns {string} Ключ: source + ':' + (sourceId || hash)
+ */
+function pfCanonicalDedupeKey_(tx) {
+  var source = String(tx.source || '').trim();
+  var sourceId = tx.sourceId ? String(tx.sourceId).trim() : '';
+  if (sourceId !== '') {
+    return source + ':' + sourceId;
+  }
+  var dateStr = pfFormatDateForDedupe_(tx.date);
+  var keyFields = [
+    dateStr,
+    String(tx.account || '').trim(),
+    String(tx.amount || ''),
+    String(tx.type || '').trim()
+  ].join('|');
+  var hash = Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, keyFields).map(function(b) {
+    return ('0' + (b & 0xFF).toString(16)).slice(-2);
+  }).join('');
+  return (source || 'unknown') + ':' + hash;
+}
+
+/**
  * Unified function to generate deduplication key from transaction data.
- * Works with both TransactionDTO objects and sheet rows.
- * 
+ * Works with both TransactionDTO objects and sheet rows. Uses pfCanonicalDedupeKey_ for objects.
+ *
  * @param {Object} data - Either TransactionDTO or sheet row array
  * @param {Object} [options] - Options for row-based generation
  * @param {number} [options.sourceCol] - Column index for source (1-based)
@@ -84,56 +109,19 @@ var PF_IMPORTER_INTERFACE = {
  */
 function pfGenerateDedupeKey_(data, options) {
   options = options || {};
-  
-  // Determine if data is TransactionDTO or row array
-  var isRow = Array.isArray(data);
-  
-  var source, sourceId, date, account, amount, type;
-  
-  if (isRow) {
-    // Extract from row array using column indices
-    var row = data;
-    source = options.sourceCol ? String(row[options.sourceCol - 1] || '').trim() : '';
-    sourceId = options.sourceIdCol ? String(row[options.sourceIdCol - 1] || '').trim() : '';
-    date = options.dateCol ? row[options.dateCol - 1] : null;
-    account = options.accountCol ? String(row[options.accountCol - 1] || '').trim() : '';
-    amount = options.amountCol ? row[options.amountCol - 1] : null;
-    type = options.typeCol ? String(row[options.typeCol - 1] || '').trim() : '';
-  } else {
-    // Extract from TransactionDTO object
-    var transaction = data;
-    source = String(transaction.source || '').trim();
-    sourceId = transaction.sourceId ? String(transaction.sourceId).trim() : '';
-    date = transaction.date;
-    account = String(transaction.account || '').trim();
-    amount = transaction.amount;
-    type = String(transaction.type || '').trim();
+  if (!Array.isArray(data)) {
+    return pfCanonicalDedupeKey_(data);
   }
-  
-  // Normalize sourceId
-  sourceId = sourceId || '';
-  source = source || '';
-  
-  // Use sourceId if available
-  if (sourceId && sourceId !== '') {
-    return source + ':' + sourceId;
-  }
-  
-  // Fallback: hash of key fields
-  var dateStr = pfFormatDateForDedupe_(date);
-  
-  var keyFields = [
-    dateStr,
-    account,
-    String(amount || ''),
-    type
-  ].join('|');
-  
-  var hash = Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, keyFields).map(function(b) {
-    return ('0' + (b & 0xFF).toString(16)).slice(-2);
-  }).join('');
-  
-  return (source || 'unknown') + ':' + hash;
+  var row = data;
+  var tx = {
+    source: options.sourceCol ? String(row[options.sourceCol - 1] || '').trim() : '',
+    sourceId: options.sourceIdCol ? String(row[options.sourceIdCol - 1] || '').trim() : '',
+    date: options.dateCol ? row[options.dateCol - 1] : null,
+    account: options.accountCol ? String(row[options.accountCol - 1] || '').trim() : '',
+    amount: options.amountCol ? row[options.amountCol - 1] : null,
+    type: options.typeCol ? String(row[options.typeCol - 1] || '').trim() : ''
+  };
+  return pfCanonicalDedupeKey_(tx);
 }
 
 /**
@@ -257,17 +245,6 @@ function pfEnsureImportRawSheet_(ss) {
   }
   
   return sheet;
-}
-
-/**
- * @deprecated This function is no longer used.
- * Processing logic has been moved to pfProcessDataBatch() which handles batching and progress updates.
- * Kept for reference only - can be removed in future cleanup.
- */
-function pfProcessImportData_(rawData, importer, options) {
-  // This function is deprecated and not used anywhere in the codebase.
-  // All processing is now done via pfProcessDataBatch().
-  throw new Error('pfProcessImportData_ is deprecated. Use pfProcessDataBatch() instead.');
 }
 
 /**
@@ -459,7 +436,7 @@ function pfPreviewImport_(transactions) {
         // Add note with dedupe key for easy lookup
         var dedupeKeyCol = rows[0].length; // Last column
         var dedupeKey = pfGenerateDedupeKey_(transactions[i]);
-        var note = 'Дубликат. Ключ: ' + dedupeKey + '\nИспользуйте меню "Personal finances → Найти дубликат" для поиска оригинала.';
+        var note = pfT_('import.duplicate_note') + dedupeKey + '\n' + pfT_('import.duplicate_hint');
         stagingSheet.getRange(i + 2, dedupeKeyCol).setNote(note);
       }
     }
@@ -631,8 +608,9 @@ function pfCommitImport_(includeNeedsReview) {
     
     var txSheet = pfFindOrCreateSheetByKey_(ss, PF_SHEET_KEYS.TRANSACTIONS);
     var numDataCols = PF_TRANSACTIONS_SCHEMA.columns.length;
-    // Use cached stagingLastRow
-    var data = stagingSheet.getRange(2, 1, stagingLastRow - 1, numDataCols).getValues();
+    // Читаем numDataRows строк данных (со 2-й строки листа импорта). getRange(startRow, startColumn, numRows, numColumns)
+    var numDataRows = stagingLastRow - 1;
+    var data = stagingSheet.getRange(2, 1, numDataRows, numDataCols).getValues();
     
     var statusColIdx = pfColumnIndex_(PF_TRANSACTIONS_SCHEMA, 'Status');
     var dateColIdx = pfColumnIndex_(PF_TRANSACTIONS_SCHEMA, 'Date');
@@ -1159,22 +1137,6 @@ function pfWritePreview(transactionsJson) {
   }
   
   return pfPreviewImport_(transactions);
-}
-
-/**
- * @deprecated This function is no longer used.
- * Import workflow is now handled client-side in ImportUI.html which calls:
- * - pfDetectFileFormat()
- * - pfParseFileContent()
- * - pfProcessDataBatch() (in batches with progress)
- * - pfWritePreview()
- * 
- * This function is kept for reference only - can be removed in future cleanup.
- */
-function pfProcessFileImport_(fileContent, options) {
-  // This function is deprecated and not used anywhere in the codebase.
-  // Import workflow is now handled client-side with granular progress updates.
-  throw new Error('pfProcessFileImport_ is deprecated. Import workflow is now handled client-side via ImportUI.html.');
 }
 
 /**

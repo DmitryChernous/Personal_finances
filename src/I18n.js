@@ -55,7 +55,8 @@ var PF_I18N = {
       archive_old_transactions: 'Архивировать старые транзакции',
       language: 'Язык',
       lang_ru: 'Русский',
-      lang_en: 'English'
+      lang_en: 'English',
+      run_tests: 'Запустить тесты'
     },
     sheet: {
       settings: 'Настройки',
@@ -127,6 +128,10 @@ var PF_I18N = {
       sheets_processed: 'Обработано листов',
       added: 'Добавлено',
       skipped: 'Пропущено (уже в Транзакциях)'
+    },
+    import: {
+      duplicate_note: 'Дубликат. Ключ: ',
+      duplicate_hint: 'Используйте меню "Personal finances → Найти дубликат" для поиска оригинала.'
     }
   },
   en: {
@@ -155,7 +160,8 @@ var PF_I18N = {
       archive_old_transactions: 'Archive Old Transactions',
       language: 'Language',
       lang_ru: 'Русский',
-      lang_en: 'English'
+      lang_en: 'English',
+      run_tests: 'Run tests'
     },
     sheet: {
       settings: 'Settings',
@@ -229,6 +235,10 @@ var PF_I18N = {
       sheets_processed: 'Processed sheets',
       added: 'Added',
       skipped: 'Skipped (already in Transactions)'
+    },
+    import: {
+      duplicate_note: 'Duplicate. Key: ',
+      duplicate_hint: 'Use menu "Personal finances → Find duplicate" to find the original.'
     },
     rule_apply_to: {
       merchant: 'Merchant only',
