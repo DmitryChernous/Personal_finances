@@ -122,6 +122,11 @@ var PF_I18N = {
       merchant: 'Только место/контрагент',
       description: 'Только комментарий',
       both: 'Оба поля'
+    },
+    sync_raw: {
+      sheets_processed: 'Обработано листов',
+      added: 'Добавлено',
+      skipped: 'Пропущено (уже в Транзакциях)'
     }
   },
   en: {
@@ -219,6 +224,11 @@ var PF_I18N = {
       endsWith: 'Ends with',
       regex: 'Regular expression',
       exact: 'Exact match'
+    },
+    sync_raw: {
+      sheets_processed: 'Processed sheets',
+      added: 'Added',
+      skipped: 'Skipped (already in Transactions)'
     },
     rule_apply_to: {
       merchant: 'Merchant only',

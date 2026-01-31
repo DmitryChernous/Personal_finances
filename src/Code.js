@@ -87,12 +87,9 @@ function pfSetup() {
  */
 function pfSyncRawSheetsToTransactionsMenu() {
   var result = pfSyncRawSheetsToTransactions();
-  var lang = pfGetLanguage_();
-  var msg = '';
-  if (lang === 'en') {
-    msg = 'Processed sheets: ' + result.sheetsProcessed + '\nAdded: ' + result.added + (result.skipped > 0 ? '\nAdded as "needs_review" (possible duplicates): ' + result.skipped : '');
-  } else {
-    msg = 'Обработано листов: ' + result.sheetsProcessed + '\nДобавлено: ' + result.added + (result.skipped > 0 ? '\nДобавлено со статусом «На проверку» (возможные дубликаты): ' + result.skipped : '');
+  var msg = pfT_('sync_raw.sheets_processed') + ': ' + result.sheetsProcessed + '\n' + pfT_('sync_raw.added') + ': ' + result.added;
+  if (result.skipped > 0) {
+    msg += '\n' + pfT_('sync_raw.skipped') + ': ' + result.skipped;
   }
   if (result.errors && result.errors.length > 0) {
     msg += '\n\nОшибки:\n' + result.errors.join('\n');
