@@ -109,6 +109,20 @@ var PF_RECURRING_TRANSACTIONS_SCHEMA = {
 };
 
 /**
+ * Raw_Config sheet schema (optional).
+ * Maps raw sheet name to column indices for non-standard raw layouts.
+ * Columns: SheetName (A), RawColumnIndex (B, 1-based), CanonicalField (C: Date, Time, Category, Description, Amount, Balance, Account).
+ */
+var PF_RAW_CONFIG_SCHEMA = {
+  sheetKey: 'raw_config',
+  columns: [
+    { key: 'SheetName', required: true },
+    { key: 'RawColumnIndex', required: true },
+    { key: 'CanonicalField', required: true }
+  ]
+};
+
+/**
  * Category Rules sheet schema.
  * Headers are resolved via i18n using `key` (see `src/I18n.js`).
  */

@@ -73,6 +73,7 @@ function pfApplyLocalization_(ss) {
   pfFindOrCreateSheetByKey_(ss, PF_SHEET_KEYS.BUDGETS);
   pfFindOrCreateSheetByKey_(ss, PF_SHEET_KEYS.RECURRING_TRANSACTIONS);
   pfFindOrCreateSheetByKey_(ss, PF_SHEET_KEYS.CATEGORY_RULES);
+  pfFindOrCreateSheetByKey_(ss, PF_SHEET_KEYS.RAW_CONFIG);
 
   // Headers for Transactions (first row).
   var txSheet = pfFindOrCreateSheetByKey_(ss, PF_SHEET_KEYS.TRANSACTIONS);

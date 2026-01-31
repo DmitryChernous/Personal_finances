@@ -119,6 +119,8 @@ function _writeHelpContentRu_(sheet) {
   sheet.getRange(row, 1).setValue('31.12.2025  12:44  Здоровье  YUG-FARM Shakhty  -740  9250  ');
   row++;
   sheet.getRange(row, 1).setValue('Порядок действий: создайте лист с именем raw_… → вставьте заголовки → заполните данные → меню "Personal finances → Синхронизировать с raw-листами".');
+  row++;
+  sheet.getRange(row, 1).setValue('Другой формат выписки: если колонки в ином порядке или с другими названиями, используйте лист «Raw_Config». Укажите имя raw-листа (колонка SheetName), номер колонки (RawColumnIndex: 1 = A, 2 = B, …) и поле схемы (CanonicalField: Date, Time, Category, Description, Amount, Balance, Account). Обязательны Date и Amount. См. docs/RAW_SHEETS_ARCHITECTURE.md, п. 3.3.');
   row += 2;
   
   // FAQ
@@ -304,6 +306,8 @@ function _writeHelpContentEn_(sheet) {
   sheet.getRange(row, 1).setValue('31.12.2025  12:44  Health  YUG-FARM Shakhty  -740  9250  ');
   row++;
   sheet.getRange(row, 1).setValue('Steps: create a sheet named raw_… → add headers → fill data → menu "Personal finances → Sync from raw sheets".');
+  row++;
+  sheet.getRange(row, 1).setValue('Different statement format: if columns are in a different order or have different names, use the «Raw_Config» sheet. Specify the raw sheet name (SheetName), column number (RawColumnIndex: 1 = A, 2 = B, …), and schema field (CanonicalField: Date, Time, Category, Description, Amount, Balance, Account). Date and Amount are required. See docs/RAW_SHEETS_ARCHITECTURE.md, § 3.3.');
   row += 2;
   
   // FAQ

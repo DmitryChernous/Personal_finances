@@ -25,7 +25,8 @@ var PF_SHEET_KEYS = {
   IMPORT_RAW: 'import_raw',
   BUDGETS: 'budgets',
   RECURRING_TRANSACTIONS: 'recurring_transactions',
-  CATEGORY_RULES: 'category_rules'
+  CATEGORY_RULES: 'category_rules',
+  RAW_CONFIG: 'raw_config'
 };
 
 var PF_I18N = {
@@ -67,6 +68,7 @@ var PF_I18N = {
       dashboard: 'Дашборд',
       help: 'Инструкция',
       import_raw: 'Импорт (черновик)',
+      raw_config: 'Raw_Config',
       budgets: 'Бюджеты',
       recurring_transactions: 'Регулярные платежи',
       category_rules: 'Правила категоризации'
@@ -180,6 +182,7 @@ var PF_I18N = {
       dashboard: 'Dashboard',
       help: 'Help',
       import_raw: 'Import (Staging)',
+      raw_config: 'Raw_Config',
       budgets: 'Budgets',
       recurring_transactions: 'Recurring Transactions',
       category_rules: 'Category Rules'

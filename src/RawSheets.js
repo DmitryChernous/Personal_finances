@@ -23,6 +23,36 @@ var PF_RAW_COL = {
 /** Количество колонок данных на raw-листе (для getRange) */
 var PF_RAW_DATA_COLS = 7;
 
+/** Допустимые значения CanonicalField в Raw_Config */
+var PF_RAW_CANONICAL_FIELDS = ['Date', 'Time', 'Category', 'Description', 'Amount', 'Balance', 'Account'];
+
+/**
+ * Читает маппинг колонок для raw-листа из листа Raw_Config.
+ * @param {GoogleAppsScript.Spreadsheet.Spreadsheet} ss
+ * @param {string} sheetName - точное имя raw-листа (например, raw_ДругойБанк)
+ * @returns {Object|null} Объект { Date: 1, Amount: 2, ... } (1-based индексы) или null, если маппинга нет
+ */
+function pfGetRawConfigForSheet_(ss, sheetName) {
+  var configSheet = pfFindSheetByKey_(ss, PF_SHEET_KEYS.RAW_CONFIG);
+  if (!configSheet || configSheet.getLastRow() < 2) return null;
+  var data = configSheet.getRange(2, 1, configSheet.getLastRow(), 3).getValues();
+  var colMap = {};
+  var sheetNameCol = 0;
+  var rawColCol = 1;
+  var canonicalCol = 2;
+  for (var i = 0; i < data.length; i++) {
+    var row = data[i];
+    if (String(row[sheetNameCol]).trim() !== sheetName) continue;
+    var rawIdx = parseInt(row[rawColCol], 10);
+    var field = String(row[canonicalCol]).trim();
+    if (isNaN(rawIdx) || rawIdx < 1 || PF_RAW_CANONICAL_FIELDS.indexOf(field) === -1) continue;
+    colMap[field] = rawIdx;
+  }
+  if (Object.keys(colMap).length === 0) return null;
+  if (!colMap.Date || !colMap.Amount) return null;
+  return colMap;
+}
+
 /**
  * Возвращает все листы, имя которых начинается с PF_RAW_SHEET_PREFIX (без учёта регистра).
  * @param {GoogleAppsScript.Spreadsheet.Spreadsheet} ss
@@ -141,26 +171,34 @@ function pfRawSourceId_(dateVal, timeStr, amount, rowIndex) {
 
 /**
  * Читает данные с одного raw-листа и возвращает массив объектов в каноническом формате (для проверки дедупликации и записи).
+ * Если передан colMap (из Raw_Config), используется маппинг колонок; иначе — фиксированная схема PF_RAW_COL.
  * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet
  * @param {string} sheetName
  * @param {string} defaultCurrency
+ * @param {Object|null} [colMap] - маппинг { Date: 1, Time: 2, ... } (1-based), из pfGetRawConfigForSheet_
  * @returns {Array<{date: Date, type: string, account: string, amount: number, currency: string, category: string, description: string, source: string, sourceId: string, status: string}>}
  */
-function pfReadRawSheet_(sheet, sheetName, defaultCurrency) {
+function pfReadRawSheet_(sheet, sheetName, defaultCurrency, colMap) {
   defaultCurrency = defaultCurrency || 'RUB';
   var lastRow = sheet.getLastRow();
   if (lastRow < 2) return [];
-  var data = sheet.getRange(2, 1, lastRow, PF_RAW_DATA_COLS).getValues();
+  var numCols = colMap ? Math.max.apply(null, Object.keys(colMap).map(function (k) { return colMap[k]; })) : PF_RAW_DATA_COLS;
+  var data = sheet.getRange(2, 1, lastRow, numCols).getValues();
   var source = 'raw:' + sheetName;
+  var defaultCol = { Date: PF_RAW_COL.DATE, Time: PF_RAW_COL.TIME, Category: PF_RAW_COL.CATEGORY, Description: PF_RAW_COL.DESCRIPTION, Amount: PF_RAW_COL.AMOUNT, Balance: PF_RAW_COL.BALANCE, Account: PF_RAW_COL.ACCOUNT };
+  var getVal = function (row, field) {
+    var idx = (colMap && colMap[field]) ? colMap[field] - 1 : (defaultCol[field] ? defaultCol[field] - 1 : -1);
+    return idx >= 0 && row.length > idx ? row[idx] : undefined;
+  };
   var result = [];
   for (var i = 0; i < data.length; i++) {
     var row = data[i];
-    var dateStr = row[PF_RAW_COL.DATE - 1];
-    var timeStr = row[PF_RAW_COL.TIME - 1];
-    var category = row[PF_RAW_COL.CATEGORY - 1];
-    var description = row[PF_RAW_COL.DESCRIPTION - 1];
-    var amountVal = row[PF_RAW_COL.AMOUNT - 1];
-    var accountVal = row[PF_RAW_COL.ACCOUNT - 1];
+    var dateStr = getVal(row, 'Date');
+    var timeStr = getVal(row, 'Time');
+    var category = getVal(row, 'Category');
+    var description = getVal(row, 'Description');
+    var amountVal = getVal(row, 'Amount');
+    var accountVal = getVal(row, 'Account');
 
     var date = pfParseRawDate_(dateStr);
     if (!date) continue;
@@ -228,7 +266,8 @@ function pfSyncRawSheetsToTransactions(ss) {
     var sheet = rawSheets[s];
     var sheetName = sheet.getName();
     try {
-      var rows = pfReadRawSheet_(sheet, sheetName, defaultCurrency);
+      var colMap = pfGetRawConfigForSheet_(ss, sheetName);
+      var rows = pfReadRawSheet_(sheet, sheetName, defaultCurrency, colMap);
       result.sheetsProcessed++;
       for (var r = 0; r < rows.length; r++) {
         var tx = rows[r];

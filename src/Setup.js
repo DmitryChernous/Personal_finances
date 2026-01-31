@@ -47,6 +47,9 @@ function pfRunSetup_() {
   // Ensure Import_Raw staging sheet exists
   pfEnsureImportRawSheet_(ss);
 
+  // Optional: Raw_Config sheet for non-standard raw column mapping (see RAW_SHEETS_ARCHITECTURE.md 3.3)
+  pfEnsureRawConfigSheet_(ss);
+
   // Apply filters, named ranges and validations.
   pfConfigureReferenceSheets_(ss);
   pfConfigureTransactionsSheet_(ss);
@@ -166,6 +169,18 @@ function pfConfigureTransactionsSheet_(ss) {
 // Help content functions moved to Help.js
 // pfEnsureHelpContent_, _writeHelpContentRu_, _writeHelpContentEn_
 // are now defined in Help.js to improve modularity
+
+/**
+ * Ensure Raw_Config sheet exists with headers (optional; used for non-standard raw column mapping).
+ * @param {GoogleAppsScript.Spreadsheet.Spreadsheet} ss
+ */
+function pfEnsureRawConfigSheet_(ss) {
+  var sheet = pfFindOrCreateSheetByKey_(ss, PF_SHEET_KEYS.RAW_CONFIG);
+  if (sheet.getLastRow() < 1) {
+    sheet.getRange(1, 1, 1, 3).setValues([['SheetName', 'RawColumnIndex', 'CanonicalField']]);
+    sheet.getRange(1, 1, 1, 3).setFontWeight('bold');
+  }
+}
 
 /**
  * @param {{columns: Array<{key: string}>}} schema
